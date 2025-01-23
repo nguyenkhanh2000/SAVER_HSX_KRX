@@ -121,10 +121,6 @@ namespace BaseSaverLib.Implementations
 				{
 
                     GetMessages();
-
-                    //this._broker.OnMessage = (receviedMsg) => { this.ReceiveMessageFromMessageQueue(receviedMsg); };
-
-                    //this._broker.SetupOnReceivedEventHandler(); // SetupOnReceivedEventHandler chi goi 1 lan, da dung o day thi ko setup o tren
                 }
                 return true;
 			}
@@ -151,8 +147,6 @@ namespace BaseSaverLib.Implementations
                     // Lấy message và thêm vào batch
                     while (batchMessages.Count < 500 /*KeyConfig.BatchSize*/ && stopwatch.Elapsed.TotalMilliseconds < 200 /*KeyConfig.TIME_DELAY*/)
                     {
-                        //CLog.LogEx("LogDequeuMsg.txt", "2." + batchMessages.Count.ToString());
-                        //CLog.LogEx("LogDequeuMsg.txt", "2." + stopwatch.Elapsed.ToString());
                         var result = this._broker.Channel.BasicGet(_broker.BrokerConfig.QueueName, autoAck: false);
                         if (result != null)
                         {
@@ -172,7 +166,6 @@ namespace BaseSaverLib.Implementations
                             // Xu ly data
                             ProcessorMsgFromRBQueue(batchMessages);
                             this._broker.Channel.BasicAck(deliveryTag: batchMessages[^1].DeliveryTag, multiple: true);
-                            //batchMessages.Clear();
                         }
                         catch (Exception ex)
                         {
@@ -320,37 +313,7 @@ namespace BaseSaverLib.Implementations
 					}
 				}
 
-                
-          
-                //string Response = "";
-                //HttpResponseMessage HttpResponseMessage = null;
-                //using (var httpClient = new HttpClient())
-                //{
-                //	httpClient.DefaultRequestHeaders.Accept.Clear();
-                //	httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(EGlobalConfig.__STRING_CONTENT_TYPE_APPLICATION_X_WWW_FORM_URLENCODED));
-                //	//application/xml
-
-
-
-                //	var httpContent = new StringContent(messageBlock, Encoding.UTF8, EGlobalConfig.__STRING_CONTENT_TYPE_APPLICATION_X_WWW_FORM_URLENCODED);
-
-                //	HttpResponseMessage = await httpClient.PostAsync(this._saverConfig.PriceServiceUrl, httpContent);
-
-                //	if (HttpResponseMessage.StatusCode == HttpStatusCode.OK)
-                //	{
-                //		Response = HttpResponseMessage.Content.ReadAsStringAsync().Result;
-                //	}
-                //	else
-                //	{
-                //		Response = "Some error occured." + HttpResponseMessage.StatusCode.ToString();
-
-                //		Console.WriteLine(Response);
-
-                //	}
-                //}
-
-                //Console.WriteLine(Response);
-
+               
 
             }
 			catch (Exception ex)
