@@ -1,0 +1,50 @@
+﻿
+        /// <summary>
+        /// X	MDEntryPx	270	124051.0	VN0HCMA18059-HCMA1805	X.269=7
+        /// </summary>
+        [JsonProperty(PropertyName = "hi", Order = 57)]
+        public double HighestPrice { get; set; }
+
+        /// <summary>
+        /// X	MDEntryPx	270	124051.0	VN0HCMA18059-HCMA1805	X.269=8
+        /// </summary>
+        [JsonProperty(PropertyName = "lo", Order = 58)]
+        public double LowestPrice { get; set; }
+--------------------------------------------
+        /// <summary>
+        /// X	MDEntryPx	270	124051.0	VN0HCMA18059-HCMA1805	X.269=7
+        /// </summary>
+        [JsonProperty(PropertyName = "hi", Order = 57)]
+        public double HighestPrice { get; set; }
+        public int HighestPriceSeqNum { get; set; }
+
+        /// <summary>
+        /// X	MDEntryPx	270	124051.0	VN0HCMA18059-HCMA1805	X.269=8
+        /// </summary>
+        [JsonProperty(PropertyName = "lo", Order = 58)]
+        public double LowestPrice { get; set; }
+        public int LowestPriceSeqNum { get; set; }
+
+==========================================
+(.*?public )(.*?)( )(.*?)( { get; set; })
+--------------------------------------------
+$1$2$3$4$5
+$1int$3$4SeqNum$5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(.*?public )(.*?)( )(.*?)( { get; set; })
+if(currentQuote.$4SeqNum < newQuote.$4SeqNum ) {currentQuote.$4SeqNum = newQuote.$4SeqNum; currentQuote.$4 = newQuote.$4;}

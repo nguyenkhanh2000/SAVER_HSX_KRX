@@ -1,0 +1,14 @@
+﻿(xQuote\.)(.*?) (.*?)= (x\.)(.*?);
+-------------------------------------
+$1$2 $3= $4$5;
+$1$2SeqNum $3= $4MsgSeqNum;
+
+
+
+xQuote.BidCount                  = x.BuyValidOrderCnt;
+xQuote.TotalBidQtty              = x.BuyTotOrderQty;
+-------------------------------------------------------
+xQuote.BidCount                  = x.BuyValidOrderCnt;
+xQuote.BidCountSeqNum                  = x.MsgSeqNum;
+xQuote.TotalBidQtty              = x.BuyTotOrderQty;
+xQuote.TotalBidQttySeqNum              = x.MsgSeqNum;

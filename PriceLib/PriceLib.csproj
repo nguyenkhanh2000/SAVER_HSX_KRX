@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSMQ.Messaging" Version="1.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BaseOracleLib\BaseOracleLib.csproj" />
+    <ProjectReference Include="..\BaseSqlServerLib\BaseSqlServerLib.csproj" />
+    <ProjectReference Include="..\MDDSCore\MDDSCore.csproj" />
+    <ProjectReference Include="..\SystemCore\SystemCore.csproj" />
+  </ItemGroup>
+
+</Project>

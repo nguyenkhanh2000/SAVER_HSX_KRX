@@ -1,0 +1,100 @@
+﻿Serilog 2.7.1
+Serilog.Sinks.File 4.0.0
+Serilog.Sinks.Async 1.3.0
+Serilog.Settings.Configuration 3.0.1
+
+Microsoft.Extensions.Configuration.Abstractions 2.2.0
+Microsoft.Extensions.Configuration.Json 2.2.0
+Microsoft.Extensions.Configuration.FileExtensions 2.2.0
+
+ZeroFormatter 1.6.4
+
+
+
+try
+{
+
+}
+catch(Exception ex)
+{
+    this._s6GApp.ErrorLogger.LogError(ex);
+}
+
+
+
+
+
+
+
+
+// log buffer begin
+TExecutionContext ec = _s6GApp.DebugLogger.WriteBufferBegin($"begin");
+
+try
+{
+	// log buffer mid
+	_s6GApp.DebugLogger.WriteBufferMid(ec, $"(U) => {this._s6GApp.Common.SerializeObjectDebug(eJsonADetailNew)}");
+}
+catch (Exception ex)
+{
+    // log error
+    this._s6GApp.ErrorLogger.LogErrorContext(ex, ec);
+}
+finally
+{
+    // log debug
+    this._s6GApp.DebugLogger.LogDebugContext(ec, $"end");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//
+// Summary:
+//     Specifies the meaning and relative importance of a log event.
+public enum LogEventLevel
+{
+	//
+	// Summary:
+	//     Anything and everything you might want to know about a running block of code.
+	Verbose = 0,
+	//
+	// Summary:
+	//     Internal system events that aren't necessarily observable from the outside.
+	Debug = 1,
+	//
+	// Summary:
+	//     The lifeblood of operational intelligence - things happen.
+	Information = 2,
+	//
+	// Summary:
+	//     Service is degraded or endangered.
+	Warning = 3,
+	//
+	// Summary:
+	//     Functionality is unavailable, invariants are broken or data is lost.
+	Error = 4,
+	//
+	// Summary:
+	//     If you have a pager, it goes off when one of these occurs.
+	Fatal = 5
+}

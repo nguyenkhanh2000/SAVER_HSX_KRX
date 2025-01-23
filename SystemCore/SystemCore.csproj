@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="App.Metrics.Extensions.Mvc" Version="1.2.1" />
+    <PackageReference Include="App.Metrics.Extensions.Reporting.InfluxDB" Version="1.2.0" />
+    <PackageReference Include="App.Metrics.Formatters.Json" Version="4.3.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+</Project>

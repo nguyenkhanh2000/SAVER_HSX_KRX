@@ -1,0 +1,16 @@
+﻿System.Data.SqlClient 4.7.0
+Dapper 2.0.30
+
+x	System.Security.Principal.Windows 4.6.0
+x	EntityFramework 6.3.0
+x	Microsoft.EntityFrameworkCore 3.0.0
+x	Microsoft.EntityFrameworkCore.SqlServer 3.0.0
+
+
+
+
+
+https://github.com/StackExchange/Dapper
+https://medium.com/@engr.mmohsin/entity-framework-core-2-dapper-performance-benchmark-c29e8cce9e1b
+
+https://dapper-tutorial.net/async

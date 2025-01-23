@@ -1,0 +1,2 @@
+﻿Newtonsoft.Json 12.0.1
+ZeroFormatter 1.6.4
