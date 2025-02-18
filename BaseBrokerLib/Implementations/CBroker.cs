@@ -245,7 +245,7 @@ namespace BaseBrokerLib.Implementations
                 this._channel = this._connection.CreateModel();
                 this._channel.ExchangeDeclare(
                     this._brokerConfig.ExchangeName,
-                    ExchangeType.Direct,
+                    ExchangeType.Fanout,
                     Convert.ToBoolean(this._brokerConfig.Durable));
 
                 this._channel.QueueDeclare(

@@ -5,6 +5,7 @@ using System.Data.SqlClient;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Transactions;
 using BaseSqlServerLib.Interfaces;
 using CommonLib.Interfaces;
 using Dapper;
@@ -122,20 +123,33 @@ namespace BaseSqlServerLib.Implementations
             int affectedRows = 0;
             try
             {
-                using (SqlConnection connection = new SqlConnection(this._connectionString))
-                //using (connection)
-                {
-                    await connection.OpenAsync();
+				//using (SqlConnection connection = new SqlConnection(this._connectionString))
+				//{
+				//    await connection.OpenAsync();
 
-                    // log before
-                    //this._app.SqlLogger.LogSql(ec.Data);
-                    // exec async
-                    affectedRows = await connection.ExecuteAsync(sql);
-                    // log after: khong lay duoc data return, output sau khi exec; caller phai tu log neu can
-                    //this._app.SqlLogger.LogSql(this._app.Common.GetResultInfo(affectedRows));
-                    await connection.CloseAsync();
-                }
-            }
+				//    // log before
+				//    //this._app.SqlLogger.LogSql(ec.Data);
+				//    // exec async
+				//    //affectedRows = await connection.ExecuteAsync(sql);
+				//    using (SqlCommand command = new SqlCommand(sql, connection))
+				//    {
+				//        command.CommandType = CommandType.Text;
+				//        //affectedRows = await command.ExecuteNonQueryAsync();
+				//        affectedRows = command.ExecuteNonQuery();
+				//    }
+				//    // log after: khong lay duoc data return, output sau khi exec; caller phai tu log neu can
+				//    //this._app.SqlLogger.LogSql(this._app.Common.GetResultInfo(affectedRows));
+				//    //await connection.CloseAsync();
+				//}
+
+
+
+				await using var connection = new SqlConnection(this._connectionString);
+				await connection.OpenAsync();
+
+				await using var command = new SqlCommand(sql, connection) { CommandType = CommandType.Text };
+				return await command.ExecuteNonQueryAsync();
+			}
             catch (Exception ex)
             {
                 // log error + buffer data

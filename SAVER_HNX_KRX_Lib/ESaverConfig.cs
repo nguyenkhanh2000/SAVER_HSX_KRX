@@ -9,5 +9,7 @@ namespace BaseSaverLib
 		public const string __SECTION_SAVER_CONFIG = "SaverConfig";
 
 		public string PriceServiceUrl { get; set; }
-	}
+		public int BatchSize { get; set; }
+		public int TIME_DELAY { get; set; }
+    }
 }

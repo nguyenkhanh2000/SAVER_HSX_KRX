@@ -14,6 +14,6 @@ namespace BaseOracleLib.Interfaces
 		string GetScript(string sql, OracleParameter[] parameters);
 		string ParametersToStringWithoutName(OracleParameter[] parameters);
 		string ToOracleDateTimeString(object sendingTime);
-		Task<EDalResult> ExecuteAsync(string sql);
+		Task<int> ExecuteAsync(string sql);
 	}
 }

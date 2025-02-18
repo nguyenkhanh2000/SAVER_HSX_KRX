@@ -7,6 +7,7 @@ using PriceLib.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks;
 using SystemCore.Entities;
@@ -52,13 +53,17 @@ namespace PriceLib.Implementations
         /// <returns></returns>
         public async Task<EDalResult> ExecuteScript(string script)
 		{
-			TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={script}", true);
+            //Stopwatch m_SW = Stopwatch.StartNew();
+            TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={script}", true);
 			IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
 			EDalResult result;
 			try
-			{				
-				result = await oracle.ExecuteAsync(script);				
-				return result;
+			{
+                int affectedRowCount = await oracle.ExecuteAsync(script);
+                //result = await oracle.ExecuteAsync(script);
+                result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = affectedRowCount };
+                //Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                return result;
 			}
 			catch (Exception ex)
 			{
@@ -68,19 +73,84 @@ namespace PriceLib.Implementations
 				return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
 			}
 		}
+        public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
+        {
+            Stopwatch m_SW = Stopwatch.StartNew();
+            TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
+            IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
+            EDalResult result;
+            try
+            {
+                var tasks = scripts.Select(script => oracle.ExecuteAsync(script));
+                await Task.WhenAll(tasks);
+                //var batches = scripts
+                //.Select((script, index) => new { script, index })
+                //.GroupBy(x => x.index / 50)
+                //.Select(g => g.Select(x => x.script));
+                //foreach (var batch in batches)
+                //{
+                //    var tasks = batch.Select(script => ExecuteScript(script));
+                //    await Task.WhenAll(tasks);
+                //}
 
-		/// <summary>
-		/// 2020-07-24 10:55:58 ngocta2
-		/// 4.1 Security Definition
-		/// insert data vao table tSecurityDefinition
-		/// chi insert 1 row 1 lan exec sp
-		/// ============================================
-		/// chu y phai khai bao size cua output var ten la "pReturnMess"
-		/// neu ko khai bao size thi luon gap error ORA-06502: PL/SQL: numeric or value error: character string buffer too small
-		/// </summary>
-		/// <param name="eSD"></param>
-		/// <returns></returns>
-		public async Task<EDalResult> UpdateSecurityDefinition(ESecurityDefinition eSD, bool getScriptOnly = false)
+                //int affectedRowCount = await oracle.ExecuteAsync(script);
+                //result = await oracle.ExecuteAsync(script);
+                result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
+                Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                return result;
+            }
+            catch (Exception ex)
+            {
+                // log error + buffer data
+                this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+                // error => return null
+                return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+            }
+        }
+    //    public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
+    //    {
+    //        Stopwatch m_SW = Stopwatch.StartNew();
+    //        TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
+    //        IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
+    //        EDalResult result;
+    //        try
+    //        {
+    //            var batches = scripts
+				//.Select((script, index) => new { script, index })
+				//.GroupBy(x => x.index / 50)
+				//.Select(g => g.Select(x => x.script));
+    //            foreach (var batch in batches)
+    //            {
+    //                var tasks = batch.Select(script => ExecuteScript(script));
+    //                await Task.WhenAll(tasks);                   
+    //            }
+
+    //            //int affectedRowCount = await oracle.ExecuteAsync(script);
+    //            //result = await oracle.ExecuteAsync(script);
+    //            result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
+    //            Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+    //            return result;
+    //        }
+    //        catch (Exception ex)
+    //        {
+    //            // log error + buffer data
+    //            this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+    //            // error => return null
+    //            return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+    //        }
+    //    }
+        /// <summary>
+        /// 2020-07-24 10:55:58 ngocta2
+        /// 4.1 Security Definition
+        /// insert data vao table tSecurityDefinition
+        /// chi insert 1 row 1 lan exec sp
+        /// ============================================
+        /// chu y phai khai bao size cua output var ten la "pReturnMess"
+        /// neu ko khai bao size thi luon gap error ORA-06502: PL/SQL: numeric or value error: character string buffer too small
+        /// </summary>
+        /// <param name="eSD"></param>
+        /// <returns></returns>
+        public async Task<EDalResult> UpdateSecurityDefinition(ESecurityDefinition eSD, bool getScriptOnly = false)
 		{
 			// log input
 			TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} eSD={_cS6GApp.Common.SerializeObject(eSD)}", true);
@@ -495,9 +565,9 @@ namespace PriceLib.Implementations
 					,new OracleParameter($"p{__ABOARDID}",               OracleDbType.Varchar2,    eSCI.BoardID,               ParameterDirection.Input)
 					,new OracleParameter($"p{__ASYMBOL}",                OracleDbType.Varchar2,    eSCI.Symbol,                ParameterDirection.Input)
 					,new OracleParameter($"p{__ASYMBOLCLOSEINFOPX}",     OracleDbType.Decimal,     eSCI.SymbolCloseInfoPx,     ParameterDirection.Input)
-					,new OracleParameter($"p{__ASYMBOLCLOSEINFOPXTYPE}", OracleDbType.Varchar2,    eSCI.SymbolCloseInfoPxType, ParameterDirection.Input)
 					,new OracleParameter($"p{__ASYMBOLCLOSEINFOYIELD}",  OracleDbType.Decimal,     eSCI.SymbolCloseInfoYield,  ParameterDirection.Input)
-					,new OracleParameter($"p{__ACHECKSUM}",              OracleDbType.Varchar2,    eSCI.CheckSum,              ParameterDirection.Input)
+                    ,new OracleParameter($"p{__ASYMBOLCLOSEINFOPXTYPE}", OracleDbType.Varchar2,    eSCI.SymbolCloseInfoPxType, ParameterDirection.Input)
+                    ,new OracleParameter($"p{__ACHECKSUM}",              OracleDbType.Varchar2,    eSCI.CheckSum,              ParameterDirection.Input)
 					,new OracleParameter($"p{__RETURNCODE}",             OracleDbType.Int64,       null,                       ParameterDirection.Output)
 					,new OracleParameter($"p{__RETURNMESS}",             OracleDbType.Varchar2,    500, null,                  ParameterDirection.Output) // 2020-07-27 14:47:53 ngocta2 phai khai bao size cua var nay
 				};
@@ -701,8 +771,8 @@ namespace PriceLib.Implementations
 					,new OracleParameter($"p{__ASYMBOL}",                   OracleDbType.Varchar2,    eSE.Symbol,                    ParameterDirection.Input)
 					,new OracleParameter($"p{__AEVENTKINDCODE}",            OracleDbType.Varchar2,    eSE.EventKindCode,             ParameterDirection.Input)
 					,new OracleParameter($"p{__AEVENTOCCURRENCEREASONCODE}",OracleDbType.Varchar2,    eSE.EventOccurrenceReasonCode, ParameterDirection.Input)
-					,new OracleParameter($"p{__AEVENTSTARTDATE}",           OracleDbType.Date,        eSE.EventStartDate,            ParameterDirection.Input)
-					,new OracleParameter($"p{__AEVENTENDDATE}",             OracleDbType.Date,        eSE.EventEndDate,              ParameterDirection.Input)
+					,new OracleParameter($"p{__AEVENTSTARTDATE}",           OracleDbType.Varchar2,    eSE.EventStartDate,            ParameterDirection.Input)
+					,new OracleParameter($"p{__AEVENTENDDATE}",             OracleDbType.Varchar2,    eSE.EventEndDate,              ParameterDirection.Input)
 					,new OracleParameter($"p{__ACHECKSUM}",                 OracleDbType.Varchar2,    eSE.CheckSum,                  ParameterDirection.Input)
 					,new OracleParameter($"p{__RETURNCODE}",                OracleDbType.Int64,       null,                          ParameterDirection.Output)
 					,new OracleParameter($"p{__RETURNMESS}",                OracleDbType.Varchar2,    500, null,                     ParameterDirection.Output) // 2020-07-27 14:47:53 ngocta2 phai khai bao size cua var nay
@@ -1134,12 +1204,12 @@ namespace PriceLib.Implementations
 					,new OracleParameter($"p{__AMSGSEQNUM}",              OracleDbType.Int64,     eIPI.MsgSeqNum,               ParameterDirection.Input)
 					,new OracleParameter($"p{__ASENDINGTIME}",            OracleDbType.Varchar2,  eIPI.SendingTime,             ParameterDirection.Input)
 					,new OracleParameter($"p{__AMARKETID}",               OracleDbType.Varchar2,  eIPI.MarketID,                ParameterDirection.Input)
-					,new OracleParameter($"p{__AMARKETINDEXCLASS}",       OracleDbType.Varchar2,  eIPI.MarketIndexClass,        ParameterDirection.Input)
 					,new OracleParameter($"p{__ATRANSACTTIME}",           OracleDbType.Varchar2,  eIPI.TransactTime,            ParameterDirection.Input)
-					,new OracleParameter($"p{__AINDEXSTYPECODE}",         OracleDbType.Varchar2,  eIPI.IndexsTypeCode,          ParameterDirection.Input)
+                    ,new OracleParameter($"p{__AMARKETINDEXCLASS}",       OracleDbType.Varchar2,  eIPI.MarketIndexClass,        ParameterDirection.Input)
+                    ,new OracleParameter($"p{__AINDEXSTYPECODE}",         OracleDbType.Varchar2,  eIPI.IndexsTypeCode,          ParameterDirection.Input)
 					,new OracleParameter($"p{__ACURRENCY}",               OracleDbType.Varchar2,  eIPI.Currency,                ParameterDirection.Input)
-					,new OracleParameter($"p{__ABONDCLASSIFICATIONCODE}", OracleDbType.Varchar2,  eIPI.BondClassificationCode,  ParameterDirection.Input)
-					,new OracleParameter($"p{__ASECURITYGROUPID }",       OracleDbType.Varchar2,  eIPI.SecurityGroupID,         ParameterDirection.Input)
+					//,new OracleParameter($"p{__ABONDCLASSIFICATIONCODE}", OracleDbType.Varchar2,  eIPI.BondClassificationCode,  ParameterDirection.Input)
+					//,new OracleParameter($"p{__ASECURITYGROUPID }",       OracleDbType.Varchar2,  eIPI.SecurityGroupID,         ParameterDirection.Input)
 					,new OracleParameter($"p{__AINVESTCODE}",             OracleDbType.Varchar2,  eIPI.InvestCode,              ParameterDirection.Input)
 					,new OracleParameter($"p{__ASELLVOLUME}",             OracleDbType.Int64,     eIPI.SellVolume,              ParameterDirection.Input)
 					,new OracleParameter($"p{__ASELLTRADEAMOUNT}",        OracleDbType.Decimal,   eIPI.SellTradeAmount,         ParameterDirection.Input)
@@ -1366,10 +1436,10 @@ namespace PriceLib.Implementations
 					,new OracleParameter($"p{__ATOTNUMREPORTS}",   OracleDbType.Int64,     eTNMPS.TotNumReports,   ParameterDirection.Input)
 					,new OracleParameter($"p{__ASELLRANKSEQ}",     OracleDbType.Int64,     eTNMPS.SellRankSeq,     ParameterDirection.Input)
 					,new OracleParameter($"p{__ASELLMEMBERNO}",    OracleDbType.Varchar2,  eTNMPS.SellMemberNo,    ParameterDirection.Input)
-					,new OracleParameter($"p{__ABUYRANKSEQ}",      OracleDbType.Int64,     eTNMPS.BuyRankSeq,      ParameterDirection.Input)
-					,new OracleParameter($"p{__ABUYMEMBERNO}",     OracleDbType.Varchar2,  eTNMPS.BuyMemberNo,     ParameterDirection.Input)
-					,new OracleParameter($"p{__ASELLVOLUME}",      OracleDbType.Int64,     eTNMPS.SellVolume,      ParameterDirection.Input)
-					,new OracleParameter($"p{__ASELLTRADEAMOUNT}", OracleDbType.Decimal,   eTNMPS.SellTradeAmount, ParameterDirection.Input)
+                    ,new OracleParameter($"p{__ASELLVOLUME}",      OracleDbType.Int64,     eTNMPS.SellVolume,      ParameterDirection.Input)
+                    ,new OracleParameter($"p{__ASELLTRADEAMOUNT}", OracleDbType.Decimal,   eTNMPS.SellTradeAmount, ParameterDirection.Input)
+                    ,new OracleParameter($"p{__ABUYRANKSEQ}",      OracleDbType.Int64,     eTNMPS.BuyRankSeq,      ParameterDirection.Input)
+					,new OracleParameter($"p{__ABUYMEMBERNO}",     OracleDbType.Varchar2,  eTNMPS.BuyMemberNo,     ParameterDirection.Input)					
 					,new OracleParameter($"p{__ABUYVOLUME}",       OracleDbType.Int64,     eTNMPS.BuyVolume,       ParameterDirection.Input)
 					,new OracleParameter($"p{__ABUYTRADEDAMOUNT}", OracleDbType.Decimal,   eTNMPS.BuyTradedAmount, ParameterDirection.Input)
 					,new OracleParameter($"p{__ACHECKSUM}",        OracleDbType.Varchar2,  eTNMPS.CheckSum,        ParameterDirection.Input)
@@ -1438,7 +1508,10 @@ namespace PriceLib.Implementations
 					,new OracleParameter($"p{__ASYMBOL}",          OracleDbType.Varchar2,  eOI.Symbol,          ParameterDirection.Input)
 					,new OracleParameter($"p{__ATRADEDATE}",       OracleDbType.Varchar2,  eOI.TradeDate,       ParameterDirection.Input)
 					,new OracleParameter($"p{__AOPENINTERESTQTY}", OracleDbType.Int64,     eOI.OpenInterestQty, ParameterDirection.Input)
-					,new OracleParameter($"p{__ACHECKSUM}",        OracleDbType.Varchar2,  eOI.CheckSum,        ParameterDirection.Input)
+					//add
+					,new OracleParameter($"p{__SETTLEMENTPRICE}", OracleDbType.Int64,     0,   ParameterDirection.Input)
+					
+                    ,new OracleParameter($"p{__ACHECKSUM}",        OracleDbType.Varchar2,  eOI.CheckSum,        ParameterDirection.Input)
 					,new OracleParameter($"p{__RETURNCODE}",       OracleDbType.Int64,     null,                   ParameterDirection.Output)
 					,new OracleParameter($"p{__RETURNMESS}",       OracleDbType.Varchar2,  500, null,              ParameterDirection.Output) // 2020-07-27 14:47:53 ngocta2 phai khai bao size cua var nay
 				};
@@ -1638,12 +1711,16 @@ namespace PriceLib.Implementations
 					,new OracleParameter($"p{__ASENDINGTIME}",      OracleDbType.Varchar2,  ePLE.SendingTime,         ParameterDirection.Input)
 					,new OracleParameter($"p{__AMARKETID}",         OracleDbType.Varchar2,  ePLE.MarketID,            ParameterDirection.Input)
 					,new OracleParameter($"p{__ASYMBOL}",           OracleDbType.Varchar2,  ePLE.Symbol,              ParameterDirection.Input)
-					,new OracleParameter($"p{__ABOARDID}",          OracleDbType.Varchar2,  ePLE.BoardID,              ParameterDirection.Input)
+					,new OracleParameter($"p{__ABOARDID}",          OracleDbType.Varchar2,  ePLE.BoardID,             ParameterDirection.Input)
 					,new OracleParameter($"p{__ATRANSACTTIME}",     OracleDbType.Varchar2,  ePLE.TransactTime,        ParameterDirection.Input)
 					,new OracleParameter($"p{__AHIGHLIMITPRICE}",   OracleDbType.Decimal,   ePLE.HighLimitPrice,      ParameterDirection.Input)
 					,new OracleParameter($"p{__ALOWLIMITPRICE}",    OracleDbType.Decimal,   ePLE.LowLimitPrice,       ParameterDirection.Input)
 					,new OracleParameter($"p{__ACHECKSUM}",         OracleDbType.Varchar2,  ePLE.CheckSum,            ParameterDirection.Input)
-					,new OracleParameter($"p{__RETURNCODE}",        OracleDbType.Int64,     null,                     ParameterDirection.Output)
+					//add 2 trường 
+					,new OracleParameter($"p{__PLEUPLMTSTEP}",      OracleDbType.Int64,     0,						  ParameterDirection.Input)
+                    ,new OracleParameter($"p{__PLELWLMTSTEP}",      OracleDbType.Int64,     0,						  ParameterDirection.Input)
+
+                    ,new OracleParameter($"p{__RETURNCODE}",        OracleDbType.Int64,     null,                     ParameterDirection.Output)
 					,new OracleParameter($"p{__RETURNMESS}",        OracleDbType.Varchar2,  500, null,                ParameterDirection.Output) // 2020-07-27 14:47:53 ngocta2 phai khai bao size cua var nay
 				};
 
@@ -2387,7 +2464,7 @@ namespace PriceLib.Implementations
 					,new OracleParameter($"p{__AMSGTYPE}",            OracleDbType.Varchar2,    ePR.MsgType,            ParameterDirection.Input)
 					,new OracleParameter($"p{__ASENDERCOMPID}",       OracleDbType.Varchar2,    ePR.SenderCompID,       ParameterDirection.Input)
 					,new OracleParameter($"p{__ATARGETCOMPID}",       OracleDbType.Varchar2,    ePR.TargetCompID,       ParameterDirection.Input)
-					,new OracleParameter($"p{__AMSGSEQNUM}",          OracleDbType.NVarchar2,   ePR.MsgSeqNum,          ParameterDirection.Input)
+					,new OracleParameter($"p{__AMSGSEQNUM}",          OracleDbType.Int64,       ePR.MsgSeqNum,          ParameterDirection.Input)
 					,new OracleParameter($"p{__ASENDINGTIME}",        OracleDbType.Varchar2,    ePR.SendingTime,        ParameterDirection.Input)
 					,new OracleParameter($"p{__AMARKETID}",           OracleDbType.Varchar2,    ePR.MarketID,           ParameterDirection.Input)
 					,new OracleParameter($"p{__ABOARDID}",            OracleDbType.Varchar2,    ePR.BoardID,            ParameterDirection.Input)

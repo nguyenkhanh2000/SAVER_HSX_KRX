@@ -27,8 +27,7 @@ namespace BaseSaverLib.Implementations
 {
     public class CMDDSHandler : IMDDSHandler
     {
-        //Stopwatch m_SW_INSERTDB = new Stopwatch();// Create new stopwatch.
-        //Stopwatch m_SW_RD = new Stopwatch();
+        private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
         Stopwatch m_SW = new Stopwatch();
         // vars
         private readonly IS6GApp _app;
@@ -71,57 +70,123 @@ namespace BaseSaverLib.Implementations
             string msgType = Regex.Match(rawData, "30001=(.*?)", RegexOptions.Multiline).Groups[1].Value;
             return msgType;
         }
-        public bool BuildScriptSQL(string[] arrMsg)
+        public async Task<bool> BuildScriptSQL(string[] arrMsg)
         {
-            var SW_RD = Stopwatch.StartNew();
-            StringBuilder mssqlBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
-            StringBuilder oracleBuilder = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
-            EBulkScript eBulkScript = new EBulkScript();
-            int count = 0;
-            var stateRedis = new ProcessStateRedis();
+            await _semaphore.WaitAsync();
             try
             {
-                foreach(string dataMsg in arrMsg)
+                // Tạo dictionary để gom nhóm theo msgType
+                Dictionary<string, List<string>> mssqlScriptsByType = new();
+                Dictionary<string, List<string>> oracleScriptsByType = new();
+
+                var SW_RD = Stopwatch.StartNew();
+                StringBuilder mssqlBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
+                StringBuilder oracleBuilder = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
+                List<string> Scriptmssql = new List<string>();
+                List<string> ScriptOracle = new List<string>();
+                EBulkScript eBulkScript = new EBulkScript();
+                EBulkScript[] arrBulkScript = new EBulkScript[0];
+                //int count = 0;
+                int sizebatch = 50;
+                var stateRedis = new ProcessStateRedis();
+
+                foreach (string msg in arrMsg)
                 {
-                    count++;
-                    string msgType = this._app.Common.GetMsgType(dataMsg);
-                    //eBulkScript = await ProcessMessage(msgType, dataBlock);
-                    eBulkScript = ProcessMessage(msgType, dataMsg, stateRedis).GetAwaiter().GetResult();
+                    string msgType = this._app.Common.GetMsgType(msg);
+                    eBulkScript = await ProcessMessage(msgType, msg, stateRedis);
+                    
+                    //count++;
                     if (!string.IsNullOrEmpty(eBulkScript.MssqlScript))
-                        mssqlBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_EXEC + EGlobalConfig.__STRING_SPACE + eBulkScript.MssqlScript).ToString();
-                    if (!string.IsNullOrEmpty(eBulkScript.OracleScript))
-                        oracleBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_TAB + EGlobalConfig.__STRING_SPACE + eBulkScript.OracleScript).ToString();                            
-                }
-                if(stateRedis.TotalCountArrMsg > 0)
-                {
-                    this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HSX_Feeder5G_Q, stateRedis.TotalCountArrMsg, stateRedis.StopwatchRD);
-                }
-                // them footer cho oracle script
-                oracleBuilder.Append(EGlobalConfig.__STRING_ORACLE_BLOCK_END);
-                // them footer cho mssql script
-                mssqlBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
-                if ((!string.IsNullOrEmpty(eBulkScript.MssqlScript) && eBulkScript.MssqlScript.Length > 10) || (!string.IsNullOrEmpty(eBulkScript.OracleScript) && eBulkScript.OracleScript.Length > 10))
-                {
+                    {
+                        if (!mssqlScriptsByType.ContainsKey(msgType))
+                        {
+                            mssqlScriptsByType[msgType] = new List<string>();
+                        }
+                        mssqlScriptsByType[msgType].Add(eBulkScript.MssqlScript);
+                    }
                     if (!string.IsNullOrEmpty(eBulkScript.OracleScript))
                     {
-                        
-                        // exec script oracle
-                        this._repository.ExecBulkScript(mssqlBuilder.ToString(), oracleBuilder.ToString());
+                        if (!oracleScriptsByType.ContainsKey(msgType))
+                        {
+                            oracleScriptsByType[msgType] = new List<string>();
+                        }
+                        oracleScriptsByType[msgType].Add(eBulkScript.OracleScript);
 
-                        this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HSX_Saver5G, count, SW_RD.ElapsedMilliseconds);
-                        this._app.SqlLogger.LogSql(mssqlBuilder.ToString());
+                        //var oracleBuilder_New = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN)
+                        //.AppendLine(EGlobalConfig.__STRING_TAB + eBulkScript.OracleScript)
+                        //.Append(EGlobalConfig.__STRING_ORACLE_BLOCK_END);
+                        //ScriptOracle.Add(oracleBuilder_New.ToString());
                     }
-                    else
-                    {
-                        // exec script mssql
-                        this._repository.ExecBulkScript(mssqlBuilder.ToString());
-
-                        this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HSX_Saver5G, count, SW_RD.ElapsedMilliseconds);
-                        this._app.SqlLogger.LogSql(mssqlBuilder.ToString());
-                    }
-
-
                 }
+                // Mỗi msgType sẽ được bao trong 1 transaction
+                foreach (var kvp in mssqlScriptsByType)
+                {
+                    var mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
+
+                    foreach (var script in kvp.Value)
+                    {
+                        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_EXEC + EGlobalConfig.__STRING_SPACE + script);
+                    }
+
+                    // Kết thúc transaction ngay khi kết thúc một msgType
+                    mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
+                    //this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
+                    Scriptmssql.Add(mssqlBatchBuilder.ToString());
+                }
+
+                foreach (var kvp in oracleScriptsByType)
+                {
+                    var oracleBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
+
+                    foreach (var script in kvp.Value)
+                    {
+                        oracleBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_TAB + EGlobalConfig.__STRING_SPACE + script);
+                    }
+
+                    // Kết thúc transaction ngay khi kết thúc một
+                    oracleBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_ORACLE_COMMIT);
+                    oracleBatchBuilder.Append(EGlobalConfig.__STRING_ORACLE_BLOCK_END);
+                    this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
+                    ScriptOracle.Add(oracleBatchBuilder.ToString());
+                }
+                //foreach (var kvp in mssqlScriptsByType)
+                //{
+                //    var mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
+                //    int count = 0;
+
+                //    foreach (var script in kvp.Value)
+                //    {
+                //        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_EXEC + EGlobalConfig.__STRING_SPACE + script);
+
+                //        if (++count % sizebatch == 0)
+                //        {
+                //            mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
+                //            this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
+                //            Scriptmssql.Add(mssqlBatchBuilder.ToString());
+                //            mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
+                //        }
+                //    }
+
+                //    // Nếu còn script chưa commit, thì commit luôn
+                //    if (count % sizebatch != 0)
+                //    {
+                //        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
+                //        this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
+                //        Scriptmssql.Add(mssqlBatchBuilder.ToString());
+                //    }
+                //}
+                if (stateRedis.TotalCountArrMsg > 0)
+                {
+                    this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HNX_Saver5G, stateRedis.TotalCountArrMsg, stateRedis.StopwatchRD);
+                }
+
+                if (Scriptmssql.Any() || ScriptOracle.Any())
+                {
+                    await this._repository.ExecBulkScript(Scriptmssql, ScriptOracle);
+                    this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HNX_Saver5G_DB, arrMsg.Length, SW_RD.ElapsedMilliseconds);
+                }
+
+
                 return true;
             }
             catch (Exception ex)
@@ -129,7 +194,11 @@ namespace BaseSaverLib.Implementations
                 this._app.ErrorLogger.LogError(ex);
                 return false;
             }
-            
+            finally
+            {
+                _semaphore.Release();
+            }
+
         }
 
         /// <summary>
@@ -179,16 +248,11 @@ namespace BaseSaverLib.Implementations
                         ESecurityDefinition eSD = await this.Raw2Entity<ESecurityDefinition>(rawData);
 
                         // Lấy ra key msg lưu db
-                        if ((eSD.MarketID == "STO") && eSD.BoardID == "G1" && !d_dic_stockno.ContainsKey(eSD.Symbol))
+                        if ((eSD.MarketID == "STX" || eSD.MarketID == "UPX" || eSD.MarketID == "DVX") && eSD.BoardID == "G1" && !d_dic_stockno.ContainsKey(eSD.Symbol))
                         {
                             d_dic_stockno[eSD.Symbol] = eSD.TickerCode;
                             string stockno = JsonConvert.SerializeObject(d_dic_stockno);
-                            _redis.SetCacheBI(TEMPLATE_REDIS_KEY_STOCK_NO_HSX, stockno, intPeriod);
-                        }else if ((eSD.MarketID == "STX" || eSD.MarketID == "UPX" || eSD.MarketID == "DVX") && eSD.BoardID == "G1" && !d_dic_stockno.ContainsKey(eSD.Symbol))
-                        {
-                            d_dic_stockno[eSD.Symbol] = eSD.TickerCode;
-                            string stockno = JsonConvert.SerializeObject(d_dic_stockno);
-                            _redis.SetCache(TEMPLATE_REDIS_KEY_STOCK_NO_HNX, stockno, intPeriod);
+                            _redis.SetCacheBI(TEMPLATE_REDIS_KEY_STOCK_NO_HNX, stockno, intPeriod);
                         }
                         eBulkScript = await _repository.GetScriptSecurityDefinition(eSD);
 
@@ -237,16 +301,16 @@ namespace BaseSaverLib.Implementations
                         eBulkScript = await _repository.GetScriptRandomEnd(eRE);
                         break;
                     // 4.10 Price
-                    case EPrice.__MSG_TYPE:
+                    case EPrice.__MSG_TYPE: 
                         EPrice eP = this._app.HandCode.Fix_Fix2EPrice(rawData, true,1,2,1);
                         var stopWatch = Stopwatch.StartNew();
                         //Update key giá khớp lệnh-- hiển thị cho phần chi tiết giá
-                        if ((eP.MarketID == "STO" || eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && eP.BoardID == "G1" && eP.Side == null)
+                        if ((eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && eP.BoardID == "G1" && eP.Side == null)
                         {
                             await UpdateRedisLE(eP);
                             _state.TotalCountArrMsg++;
                         }
-                        else if ((eP.MarketID == "STO" || eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && eP.BoardID == "G4" && eP.Side != null)
+                        else if ((eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && eP.BoardID == "G4" && eP.Side != null)
                         {
                             // Giao dịch lô lẻ cho phần chi tiết giá
                             await UpdateRedisPO(eP);
@@ -393,14 +457,7 @@ namespace BaseSaverLib.Implementations
                 //var SW = Stopwatch.StartNew();
                 if (d_dic_stockno.Count < 1)
                 {
-                    if (eP.MarketID == "STO")
-                    {
-                        value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HSX);
-                    }
-                    else if (eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX")
-                    {
-                        value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HNX);
-                    }
+                    value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HNX);
 
                     if (!string.IsNullOrEmpty(value))
                     {
@@ -431,9 +488,7 @@ namespace BaseSaverLib.Implementations
                                 .Replace("(MT)", time.ToString())
                                 .Replace("(MQ)", Processkl(eP.MatchQuantity).ToString())
                                 .Replace("(MP)", ProcessPrice(eP.MatchPrice).ToString())
-                                .Replace("(TQ)", Processkl(eP.TotalVolumeTraded).ToString())
-                                ;
-                        //this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HSX_Feeder5G_Q, strJsonC.Length, stopWatch.ElapsedMilliseconds);
+                                .Replace("(TQ)", Processkl(eP.TotalVolumeTraded).ToString());                      
                     }
                     else
                     {
@@ -441,9 +496,7 @@ namespace BaseSaverLib.Implementations
                                 .Replace("(MT)", time.ToString())
                                 .Replace("(MQ)", eP.MatchQuantity.ToString())
                                 .Replace("(MP)", ProcessPrice(eP.MatchPrice).ToString())
-                                .Replace("(TQ)", eP.TotalVolumeTraded.ToString())
-                                ;
-                        //this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HSX_Feeder5G_Q, strJsonC.Length, stopWatch.ElapsedMilliseconds);
+                                .Replace("(TQ)", eP.TotalVolumeTraded.ToString());                       
                     }
                     string Z_KEY = TEMPLATE_REDIS_KEY_LE.Replace("(Symbol)", Symbol);
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
@@ -466,14 +519,8 @@ namespace BaseSaverLib.Implementations
                 var stopWatch = Stopwatch.StartNew();
                 if (d_dic_stockno.Count < 1)
                 {
-                    if (eP.MarketID == "STO")
-                    {
-                        value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HSX);
-                    }
-                    else if (eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX")
-                    {
-                        value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HNX);
-                    }
+                    value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HNX);
+
                     if (!string.IsNullOrEmpty(value))
                     {
                         Dictionary<string, string> storedDictionary = JsonConvert.DeserializeObject<Dictionary<string, string>>(value);
@@ -517,9 +564,7 @@ namespace BaseSaverLib.Implementations
                     string Z_VALUE = TEMPLATE_REDIS_VALUE.Replace("(Now)", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"))
                                          .Replace("(RedisData)", sbJsonC);
 
-                    await this._redis.SortedSetAddAsync(Z_KEY, Z_VALUE, intPeriod);
-
-                    //this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HSX_Feeder5G_Q, sbJsonC.Length, stopWatch.ElapsedMilliseconds);
+                    await this._redis.SortedSetAddAsync(Z_KEY, Z_VALUE, intPeriod);                    
                 }
             }
             catch (Exception ex)

@@ -62,15 +62,16 @@ namespace HSXSaverApp
             Console.ReadLine();
 
             // Perform text input
-            for (; ; )
-            {
-                string line = Console.ReadLine();
-                if (string.IsNullOrEmpty(line))
-                    break;
-            }
+            //for (; ; )
+            //{
+            //    string line = Console.ReadLine();
+            //    if (string.IsNullOrEmpty(line))
+            //        break;
+            //}
 
-            // Disconnect the client
-            Console.WriteLine("Done!");
+            //// Disconnect the client
+            //Console.WriteLine("Done!");
+            Task.Delay(-1).Wait();
 
         }
 

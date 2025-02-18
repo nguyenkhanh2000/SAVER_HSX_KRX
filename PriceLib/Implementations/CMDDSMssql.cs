@@ -8,8 +8,10 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks;
+using System.Transactions;
 using SystemCore.Entities;
 using SystemCore.Temporaries;
 
@@ -43,16 +45,17 @@ namespace PriceLib.Implementations
         /// <returns></returns>
         public async Task<EDalResult> ExecuteScript(string script)
 		{
-			TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={script}", true);
+            Stopwatch m_SW = Stopwatch.StartNew();
+            TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={script}", true);
 			ISqlServer<ESecurityDefinition> sqlServer = new CSqlServer<ESecurityDefinition>(this._cS6GApp, this._ePriceConfig.ConnectionMssql);
-			await semaphoreSQL.WaitAsync();
             try
 			{
 				EDalResult result;
 
                 int affectedRowCount = await sqlServer.ExecuteAsync(script);
 				result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = affectedRowCount };
-				return result;
+                Console.WriteLine("SQL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                return result;
 			}
 			catch (Exception ex)
 			{
@@ -61,22 +64,83 @@ namespace PriceLib.Implementations
 				// error => return null
 				return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
 			}
-			finally
-			{
-                semaphoreSQL.Release();
-
-            }
 		}
+        public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
+        {
+            Stopwatch m_SW = Stopwatch.StartNew();
+            TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
+            ISqlServer<ESecurityDefinition> sqlServer = new CSqlServer<ESecurityDefinition>(this._cS6GApp, this._ePriceConfig.ConnectionMssql);
+           
+            try
+            {
+                
+                EDalResult result;
 
-		/// <summary>
-		/// 2020-07-24 10:55:58 ngocta2
-		/// 4.1 Security Definition
-		/// insert data vao table tSecurityDefinition
-		/// chi insert 1 row 1 lan exec sp
-		/// </summary>
-		/// <param name="eSD"></param>
-		/// <returns></returns>
-		public async Task<EDalResult> UpdateSecurityDefinition(ESecurityDefinition eSD, bool getScriptOnly = false)
+                //foreach(var item in scripts)
+                //{
+                //                int affectedRowCount = await sqlServer.ExecuteAsync(item);
+                //            }
+                var tasks = scripts.Select(async script =>
+                {
+                    try
+                    {
+                        await sqlServer.ExecuteAsync(script);
+                    }
+                    catch (Exception ex)
+                    {
+                        this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+                    }
+                });
+                await Task.WhenAll(tasks);
+                //var batches = scripts
+                //.Select((script, index) => new { script, index })
+                //.GroupBy(x => x.index / 50)
+                //.Select(g => g.Select(x => x.script));
+                //foreach (var batch in batches)
+                //{
+                //    var tasks = batch.Select(script => ExecuteScript(script));
+                //    await Task.WhenAll(tasks);
+                //}
+                //int affectedRowCount = await sqlServer.ExecuteAsync(scripts);
+
+                //var batches = scripts
+                //.Select((script, index) => new { script, index })
+                //.GroupBy(x => x.index / 50) // Chia thành batch 50 SP
+                //.Select(g => g.Select(x => x.script).ToList());
+
+                //           foreach (var batch in batches)
+                //           {
+                //               using (var transactionScope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+                //               {
+                //                   foreach (var script in batch)
+                //                   {
+                //                       await sqlServer.ExecuteAsync(script); // Thực thi từng SP trong transaction
+                //                   }
+                //                   transactionScope.Complete(); // Commit tất cả nếu thành công
+                //               }
+                //           }
+
+                result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
+                Console.WriteLine("SQL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                return result;
+            }
+            catch (Exception ex)
+            {
+                // log error + buffer data
+                this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+                // error => return null
+                return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+            }
+        }
+        /// <summary>
+        /// 2020-07-24 10:55:58 ngocta2
+        /// 4.1 Security Definition
+        /// insert data vao table tSecurityDefinition
+        /// chi insert 1 row 1 lan exec sp
+        /// </summary>
+        /// <param name="eSD"></param>
+        /// <returns></returns>
+        public async Task<EDalResult> UpdateSecurityDefinition(ESecurityDefinition eSD, bool getScriptOnly = false)
 		{
 			// log input
             TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} eSD={this._cS6GApp.Common.SerializeObject(eSD)}", true);
@@ -1034,8 +1098,8 @@ namespace PriceLib.Implementations
 				dynamicParameters.Add($"@{__AMARKETINDEXCLASS}",       eIPI.MarketIndexClass,       DbType.AnsiString,   ParameterDirection.Input);
 				dynamicParameters.Add($"@{__AINDEXSTYPECODE}",         eIPI.IndexsTypeCode,         DbType.AnsiString,   ParameterDirection.Input);
 				dynamicParameters.Add($"@{__ACURRENCY}",               eIPI.Currency,               DbType.AnsiString,   ParameterDirection.Input);
-				dynamicParameters.Add($"@{__ABONDCLASSIFICATIONCODE}", eIPI.BondClassificationCode, DbType.AnsiString,   ParameterDirection.Input);
-				dynamicParameters.Add($"@{__ASECURITYGROUPID}",        eIPI.SecurityGroupID,        DbType.AnsiString,   ParameterDirection.Input);
+				//dynamicParameters.Add($"@{__ABONDCLASSIFICATIONCODE}", eIPI.BondClassificationCode, DbType.AnsiString,   ParameterDirection.Input);
+				//dynamicParameters.Add($"@{__ASECURITYGROUPID}",        eIPI.SecurityGroupID,        DbType.AnsiString,   ParameterDirection.Input);
 				dynamicParameters.Add($"@{__AINVESTCODE}",             eIPI.InvestCode,             DbType.AnsiString,   ParameterDirection.Input);
 				dynamicParameters.Add($"@{__ASELLVOLUME}",             eIPI.SellVolume,             DbType.Int64,        ParameterDirection.Input);
 				dynamicParameters.Add($"@{__ASELLTRADEAMOUNT}",        eIPI.SellTradeAmount,        DbType.Decimal,      ParameterDirection.Input);
@@ -1241,7 +1305,9 @@ namespace PriceLib.Implementations
 				dynamicParameters.Add($"@{__ASYMBOL}",          eOI.Symbol,          DbType.AnsiString, ParameterDirection.Input);
 				dynamicParameters.Add($"@{__ATRADEDATE}",       eOI.TradeDate,       DbType.Date,       ParameterDirection.Input);
 				dynamicParameters.Add($"@{__AOPENINTERESTQTY}", eOI.OpenInterestQty, DbType.Int64,      ParameterDirection.Input);
-				dynamicParameters.Add($"@{__ACHECKSUM}",        eOI.CheckSum,        DbType.AnsiString, ParameterDirection.Input);
+                //add
+                dynamicParameters.Add($"@a{__SETTLEMENTPRICE}", 0, DbType.Int64, ParameterDirection.Input);
+                dynamicParameters.Add($"@{__ACHECKSUM}",        eOI.CheckSum,        DbType.AnsiString, ParameterDirection.Input);
 
 				// ko exec sp, chi lay script de run bulk update sau nay 
 				if (getScriptOnly)

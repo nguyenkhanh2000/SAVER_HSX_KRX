@@ -18,7 +18,7 @@ namespace SAVER_HNX_KRX
 {
     public class Program
     {
-        static public Mutex _mutex = new Mutex(true, "SAVER_HSX_KRX");
+        static public Mutex _mutex = new Mutex(true, "SAVER_HNX_KRX");
         static public CS6GApp _app;
         static public EBrokerConfig _brokerConfig;
         static public CBroker _broker;
@@ -62,16 +62,16 @@ namespace SAVER_HNX_KRX
             Console.ReadLine();
 
             // Perform text input
-            for (; ; )
-            {
-                string line = Console.ReadLine();
-                if (string.IsNullOrEmpty(line))
-                    break;
-            }
+            //for (; ; )
+            //{
+            //    string line = Console.ReadLine();
+            //    if (string.IsNullOrEmpty(line))
+            //        break;
+            //}
 
-            // Disconnect the client
-            Console.WriteLine("Done!");
-
+            //// Disconnect the client
+            //Console.WriteLine("Done!");
+            Task.Delay(-1).Wait();
         }
 
         /// <summary>

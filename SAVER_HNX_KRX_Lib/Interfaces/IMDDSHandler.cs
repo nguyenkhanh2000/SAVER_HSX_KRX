@@ -11,7 +11,7 @@ namespace BaseSaverLib.Interfaces
     {
         //Task<EResponseResult> UpdateBulk(string dataBlock);
         Task<EBulkScript> ProcessMessage(string msgType, string rawData, ProcessStateRedis processStateRedis);
-        bool BuildScriptSQL(string[] arrMsg);  
+        Task<bool> BuildScriptSQL(string[] arrMsg);  
     }
 }
 

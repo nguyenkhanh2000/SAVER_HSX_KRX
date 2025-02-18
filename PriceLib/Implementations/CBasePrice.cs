@@ -292,12 +292,17 @@ namespace PriceLib.Implementations
         protected const string __ATSCPRODGRPID = "aTscProdGrpId";
         protected const string __AHALTRSNCODE = "aHaltRsnCode";
 
+        //Msg MX thêm 2 trường 
+        protected const string __PLEUPLMTSTEP = "PleUpLmtStep";
+        protected const string __PLELWLMTSTEP = "PleLwLmtStep";
+
         protected const string __RETURNCODE = "ReturnCode";
 		protected const string __RETURNMESS = "ReturnMess";
-
+		//Msg MA them 1 truong
+		protected const string __SETTLEMENTPRICE = "SettlementPrice";
         //var
-       
-             
+
+
         protected const string __PID = "PID";
         protected const string __PSYMBOL = "PSYMBOL";
         protected const string __PBOARDCODE = "PBOARDCODE";

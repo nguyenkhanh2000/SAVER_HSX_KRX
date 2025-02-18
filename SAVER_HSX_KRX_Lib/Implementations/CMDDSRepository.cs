@@ -13,6 +13,7 @@ using SystemCore.Entities;
 using SystemCore.Temporaries;
 using Oracle.ManagedDataAccess.Client;
 using System.Data.SqlClient;
+using System.Diagnostics;
 
 namespace BaseSaverLib.Implementations
 {
@@ -35,8 +36,8 @@ namespace BaseSaverLib.Implementations
         {
             this._app = app;
             this._priceConfig = new EPriceConfig();
-           // this._connectionOracle = oracle;
-          //  this._connectionSql = sql;
+            // this._connectionOracle = oracle;
+            //  this._connectionSql = sql;
             this._app.Configuration.GetSection(EPriceConfig.__SECTION_PRICECONFIG).Bind(_priceConfig);
             this._oracle = new CMDDSOracle(app, _priceConfig);
             this._mssql = new CMDDSMssql(app, _priceConfig);
@@ -50,37 +51,47 @@ namespace BaseSaverLib.Implementations
         /// <param name="mssqlScript"></param>
         /// <param name="oracleScript"></param>
         /// <returns></returns>
-        public async Task<EDalResult> ExecBulkScript(string mssqlScript, string oracleScript)
+        public async Task<bool> ExecBulkScript(List<string> mssqlScript, List<string> oracleScript)
         {
             TExecutionContext ec = this._app.DebugLogger.WriteBufferBegin($"begin mssqlScript={mssqlScript}; oracleScript={oracleScript}", true);
             EDalResult mssqlResult = null;
             EDalResult oracleResult = null;
-
+            Stopwatch m_SW = Stopwatch.StartNew();
             try
             {
                 // update vao MSSQL
-                Task mssqlTask = Task.Run(async () => mssqlResult = await this._mssql.ExecuteScript(mssqlScript));
+                //Task mssqlTask = Task.Run(async () => mssqlResult = await this._mssql.ExecuteScript(mssqlScript));
 
-                // update vao ORACLE
-                Task oracleTask = Task.Run(async () => oracleResult = await this._oracle.ExecuteScript(oracleScript));
+                //// update vao ORACLE
+                //Task oracleTask = Task.Run(async () => oracleResult = await this._oracle.ExecuteScript(oracleScript));
 
-                // wait all
-                await Task.WhenAll(mssqlTask, oracleTask);
+                //// wait all
+                //await Task.WhenAll(mssqlTask, oracleTask);
+                var mssqlTask = this._mssql.ExecuteScriptOracle(mssqlScript);
+                var oracleTask = this._oracle.ExecuteScriptOracle(oracleScript);
 
+                // Chờ cả hai hoàn thành
+                var results = await Task.WhenAll(mssqlTask, oracleTask);
+                Console.WriteLine("WHENALL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                //var results = await Task.WhenAll(mssqlTask);
+                //mssqlResult = results[0];
+                //oracleResult = results[1];
                 // return data
-                return new EDalResult()
-                {
-                    Code = mssqlResult.Code + oracleResult.Code,
-                    Message = mssqlResult.Message + "; " + oracleResult.Message,
-                    Data = mssqlResult.Data
-                };
+                //return new EDalResult()
+                //{
+                //    Code = mssqlResult.Code + oracleResult.Code,
+                //    Message = mssqlResult.Message + "; " + oracleResult.Message,
+                //    Data = mssqlResult.Data
+                //};
+                return true;
             }
             catch (Exception ex)
             {
                 // log error + buffer data
                 this._app.ErrorLogger.LogErrorContext(ex, ec);
                 // return null
-                return new EDalResult() { Code = EDalResult.__CODE_ERROR, Message = ex.Message, Data = null };
+                //return new EDalResult() { Code = EDalResult.__CODE_ERROR, Message = ex.Message, Data = null };
+                return false;
             }
         }
 
@@ -88,21 +99,21 @@ namespace BaseSaverLib.Implementations
         {
             TExecutionContext ec = this._app.DebugLogger.WriteBufferBegin($"begin mssqlScript={mssqlScript};", true);
             EDalResult mssqlResult = null;
-            
+
             try
             {
                 // update vao MSSQL
                 Task mssqlTask = Task.Run(async () => mssqlResult = await this._mssql.ExecuteScript(mssqlScript));
 
-              
+
                 // wait all
                 await Task.WhenAll(mssqlTask);
 
                 // return data
                 return new EDalResult()
                 {
-                    Code = mssqlResult.Code ,
-                    Message = mssqlResult.Message ,
+                    Code = mssqlResult.Code,
+                    Message = mssqlResult.Message,
                     Data = mssqlResult.Data
                 };
             }
@@ -135,8 +146,8 @@ namespace BaseSaverLib.Implementations
 
                 // update vao ORACLE
                 Task oracleTask = Task.Run(async () => oracleResult = await this._oracle.UpdateSecurityDefinition(eSD, true));
-               // Task oracleTask2 = Task.Run(async () => oracleResult2 = await this._oracle.UpdateSecurityDefinitionIG3SI(eSD, true));
-                
+                // Task oracleTask2 = Task.Run(async () => oracleResult2 = await this._oracle.UpdateSecurityDefinitionIG3SI(eSD, true));
+
                 // wait all
                 await Task.WhenAll(mssqlTask, oracleTask);
 

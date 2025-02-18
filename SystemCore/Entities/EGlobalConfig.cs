@@ -178,6 +178,10 @@ preturnmess   VARCHAR2 (500) := 'INIT';
 BEGIN";
 		public const string __STRING_ORACLE_BLOCK_END = @"
 END;";
+		public const string __STRING_ORACLE_COMMIT = @"
+COMMIT;";
+
+
 		public const string __STRING_METHOD_POST = "POST";
 		public const string __STRING_CONTENT_TYPE_APPLICATION_X_WWW_FORM_URLENCODED = "application/x-www-form-urlencoded";
 		public const string __STRING_COMMA = ",";

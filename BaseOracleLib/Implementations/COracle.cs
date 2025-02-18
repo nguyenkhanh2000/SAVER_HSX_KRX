@@ -21,6 +21,9 @@ namespace BaseOracleLib.Implementations
         // vars
         private readonly IS6GApp _app;
 		private readonly string _connectionString;
+
+		private readonly OracleDbManager _dbManager;
+        private readonly SemaphoreSlim semaphoreOracle = new SemaphoreSlim(1, 1);
         //private string connection;
         // ==============================================================
 
@@ -32,9 +35,9 @@ namespace BaseOracleLib.Implementations
         /// <param name="connectionString"></param>
         public COracle(IS6GApp app, string connectionString)
 		{			
-                this._app = app;
-                this._connectionString = connectionString;
-                     
+            this._app = app;
+            this._connectionString = connectionString;
+			_dbManager = new OracleDbManager(connectionString);
         }
 
 		/// <summary>
@@ -194,38 +197,88 @@ namespace BaseOracleLib.Implementations
 		/// </summary>
 		/// <param name="sql"></param>
 		/// <returns></returns>
-		public async Task<EDalResult> ExecuteAsync(string sql)
+		public async Task<int> ExecuteAsync(string sql)
 		{
-			TExecutionContext ec = this._app.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} {sql}", true);
+            //await semaphoreOracle.WaitAsync();
+            TExecutionContext ec = this._app.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} {sql}", true);
 			EDalResult result;
 			int affectedRowCount = 0;
 
-			try
+            try
 			{
-				using (OracleConnection connection = new OracleConnection(this._connectionString))
-				{
-                    await connection.OpenAsync();
-                    
-					
-					// log before
-					//this._app.SqlLogger.LogSql(ec.Data);
-					// exec sync : return rows affected by the command
-					affectedRowCount = OracleHelper.ExecuteNonQuery(connection, CommandType.Text, sql);
-					// log after
-					//this._app.SqlLogger.LogSql(this._app.Common.GetResultInfo(affectedRowCount));
-                    await connection.CloseAsync();
+                using (OracleConnection connection = await new OracleDbManager(_connectionString).GetConnectionAsync())
+                {
+                    //Console.WriteLine($"Connection State: {connection?.State}");
 
+                    using (OracleCommand command = new OracleCommand(sql, connection) { CommandType = CommandType.Text })
+                    {
+                        //Console.WriteLine($"Command created successfully.");
+                        return await command.ExecuteNonQueryAsync();
+                    }
                 }
-				// return
-				result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = affectedRowCount };
-			}
+
+
+
+                //await using var connection = new OracleConnection(this._connectionString);
+                //await connection.OpenAsync();
+
+                //await using var command = new OracleCommand(sql, connection) { CommandType = CommandType.Text };
+                //var results = await command.ExecuteNonQueryAsync();
+                //return results;
+
+
+
+
+
+
+                //using (OracleConnection connection = await _dbManager.GetConnectionAsync())
+                //            using (OracleCommand command = new OracleCommand(sql, connection))
+                //            using (OracleTransaction transaction = connection.BeginTransaction())
+                //{
+                //                command.CommandType = CommandType.Text;
+                //                command.Transaction = transaction;
+                //                affectedRowCount = await command.ExecuteNonQueryAsync();
+                //                transaction.Commit();
+                //            }	
+                //          using (OracleConnection connection = await _dbManager.GetConnectionAsync())
+                //          {
+                //              //await connection.OpenAsync();
+
+                //              using (OracleTransaction transaction = connection.BeginTransaction())
+                //              using (OracleCommand command = new OracleCommand(sql, connection))
+                //              {
+                //                  command.CommandType = CommandType.Text;
+                //                  command.Transaction = transaction;
+
+                //                  //affectedRowCount = await command.ExecuteNonQueryAsync();
+                //affectedRowCount = command.ExecuteNonQuery();
+                //                  transaction.Commit();
+                //              }
+                //          } // Connection sẽ tự đóng khi thoát khỏi using
+
+                //await using var connection = await _dbManager.GetConnectionAsync();
+                //await using var command = new OracleCommand(sql, connection)
+                //{
+                //    CommandType = CommandType.Text,
+                //};
+
+                //affectedRowCount = await command.ExecuteNonQueryAsync();
+
+
+                //result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = affectedRowCount };
+            }
 			catch (Exception ex)
 			{
 				// log error + buffer data
 				this._app.ErrorLogger.LogErrorContext(ex, ec);
-				result = new EDalResult() { Code = EDalResult.__CODE_ERROR, Message = ex.Message, Data = null };
+				//result = new EDalResult() { Code = EDalResult.__CODE_ERROR, Message = ex.Message, Data = null };
 			}
-			return result;
+			//finally
+			//{
+   //             semaphoreOracle.Release();
+
+   //         }
+			return affectedRowCount;
 		}
 	}
 }

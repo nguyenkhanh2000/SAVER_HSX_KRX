@@ -43,6 +43,7 @@ namespace PriceLib.Interfaces
         Task<EDalResult> UpdatePriceRecoveryAll(EPriceRecovery ePriceRecovery, bool getScriptOnly = false);
 
 		Task<EDalResult> ExecuteScript(string script);
+		Task<EDalResult> ExecuteScriptOracle(List<string> scripts);
 
 
 

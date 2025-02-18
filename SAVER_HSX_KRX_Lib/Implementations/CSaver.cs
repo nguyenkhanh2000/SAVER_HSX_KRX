@@ -145,7 +145,7 @@ namespace BaseSaverLib.Implementations
 
 
                     // Lấy message và thêm vào batch
-                    while (batchMessages.Count < 500 /*KeyConfig.BatchSize*/ && stopwatch.Elapsed.TotalMilliseconds < 200 /*KeyConfig.TIME_DELAY*/)
+                    while (batchMessages.Count < _saverConfig.BatchSize && stopwatch.Elapsed.TotalMilliseconds < _saverConfig.TIME_DELAY)
                     {
                         var result = this._broker.Channel.BasicGet(_broker.BrokerConfig.QueueName, autoAck: false);
                         if (result != null)
