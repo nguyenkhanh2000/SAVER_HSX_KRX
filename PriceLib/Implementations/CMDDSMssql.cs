@@ -2418,5 +2418,9 @@ namespace PriceLib.Implementations
         {
             throw new NotImplementedException();
         }
+        public async Task<EDalResult> ExecuteScriptPrice(List<string> scripts, List<string> scripts_msgX, List<string> scripts_msgW)
+		{
+            throw new NotImplementedException();
+        }
     }
 }

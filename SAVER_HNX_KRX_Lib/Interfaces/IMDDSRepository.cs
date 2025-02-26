@@ -40,7 +40,7 @@ namespace BaseSaverLib.Interfaces
         Task<EBulkScript> GetScriptTimeStampPolling(ETimeStampPolling eTSP);
         Task<EBulkScript> GetScriptPriceAll(EPrice eP);
         Task<EBulkScript> GetScriptPriceRecoveryAll(EPriceRecovery ePR);
-        Task<bool> ExecBulkScript(List<string> mssqlScript, List<string> oracleScript);
+        Task<bool> ExecBulkScript(List<string> mssqlScript, List<string> oracleScript, List<string> oracleScript_msgX, List<string> oracleScript_msgW);
         Task<EDalResult> ExecBulkScript(string mssqlScript);
 
         Task<EBulkScript> GetScriptDrvProductEvent(EDrvProductEvent eDRV);

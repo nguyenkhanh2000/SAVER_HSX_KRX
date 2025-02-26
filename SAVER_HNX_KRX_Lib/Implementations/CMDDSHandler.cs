@@ -75,117 +75,133 @@ namespace BaseSaverLib.Implementations
             await _semaphore.WaitAsync();
             try
             {
-                // Tạo dictionary để gom nhóm theo msgType
-                Dictionary<string, List<string>> mssqlScriptsByType = new();
-                Dictionary<string, List<string>> oracleScriptsByType = new();
+                string logFileName = $"{EPriceConfig.__LOG_SQL_FILENAME}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.log";
+
+                var mssqlScriptsByType = new Dictionary<string, List<string>>();
+                var oracleScriptsByType = new Dictionary<string, List<string>>();
 
                 var SW_RD = Stopwatch.StartNew();
-                StringBuilder mssqlBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
-                StringBuilder oracleBuilder = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
-                List<string> Scriptmssql = new List<string>();
-                List<string> ScriptOracle = new List<string>();
-                EBulkScript eBulkScript = new EBulkScript();
-                EBulkScript[] arrBulkScript = new EBulkScript[0];
-                //int count = 0;
-                int sizebatch = 50;
+                var Scriptmssql = new List<string>();
+                var ScriptOracle = new List<string>();
+                var ScriptOracle_msgX = new List<string>();
+                var ScriptOracle_msgW = new List<string>();
                 var stateRedis = new ProcessStateRedis();
 
+                var sqlBeginTransaction = EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION;
+                var sqlCommitTransaction = EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION;
+                var oracleBeginBlock = EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN;
+                var oracleCommit = EGlobalConfig.__STRING_ORACLE_COMMIT;
+                var oracleEndBlock = EGlobalConfig.__STRING_ORACLE_BLOCK_END;
+                var sqlExec = $"{EGlobalConfig.__STRING_RETURN_NEW_LINE}{EGlobalConfig.__STRING_EXEC}{EGlobalConfig.__STRING_SPACE}";
+                var oracleNewLineTab = $"{EGlobalConfig.__STRING_RETURN_NEW_LINE}{EGlobalConfig.__STRING_TAB}{EGlobalConfig.__STRING_SPACE}";
+
+                // Duyệt từng tin nhắn và nhóm theo msgType
                 foreach (string msg in arrMsg)
                 {
                     string msgType = this._app.Common.GetMsgType(msg);
-                    eBulkScript = await ProcessMessage(msgType, msg, stateRedis);
-                    
-                    //count++;
+                    var eBulkScript = await ProcessMessage(msgType, msg, stateRedis);
+
                     if (!string.IsNullOrEmpty(eBulkScript.MssqlScript))
                     {
-                        if (!mssqlScriptsByType.ContainsKey(msgType))
+                        if (!mssqlScriptsByType.TryGetValue(msgType, out var mssqlList))
                         {
-                            mssqlScriptsByType[msgType] = new List<string>();
+                            mssqlList = new List<string>();
+                            mssqlScriptsByType[msgType] = mssqlList;
                         }
-                        mssqlScriptsByType[msgType].Add(eBulkScript.MssqlScript);
+                        mssqlList.Add(eBulkScript.MssqlScript);
                     }
+
                     if (!string.IsNullOrEmpty(eBulkScript.OracleScript))
                     {
-                        if (!oracleScriptsByType.ContainsKey(msgType))
+                        if (!oracleScriptsByType.TryGetValue(msgType, out var oracleList))
                         {
-                            oracleScriptsByType[msgType] = new List<string>();
+                            oracleList = new List<string>();
+                            oracleScriptsByType[msgType] = oracleList;
                         }
-                        oracleScriptsByType[msgType].Add(eBulkScript.OracleScript);
-
-                        //var oracleBuilder_New = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN)
-                        //.AppendLine(EGlobalConfig.__STRING_TAB + eBulkScript.OracleScript)
-                        //.Append(EGlobalConfig.__STRING_ORACLE_BLOCK_END);
-                        //ScriptOracle.Add(oracleBuilder_New.ToString());
+                        oracleList.Add(eBulkScript.OracleScript);
                     }
                 }
-                // Mỗi msgType sẽ được bao trong 1 transaction
-                foreach (var kvp in mssqlScriptsByType)
+
+                // Tạo batch script cho SQL Server
+                foreach (var (msgType, scripts) in mssqlScriptsByType)
                 {
-                    var mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
-
-                    foreach (var script in kvp.Value)
+                    var mssqlBatchBuilder = new StringBuilder(sqlBeginTransaction);
+                    foreach (var script in scripts)
                     {
-                        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_EXEC + EGlobalConfig.__STRING_SPACE + script);
+                        mssqlBatchBuilder.Append(sqlExec).Append(script);
                     }
-
-                    // Kết thúc transaction ngay khi kết thúc một msgType
-                    mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
-                    //this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
+                    mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE).Append(sqlCommitTransaction);
                     Scriptmssql.Add(mssqlBatchBuilder.ToString());
                 }
 
-                foreach (var kvp in oracleScriptsByType)
+                // Tạo batch script cho Oracle
+                foreach (var (msgTypes, scripts) in oracleScriptsByType)
                 {
-                    var oracleBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
-
-                    foreach (var script in kvp.Value)
+                    if (msgTypes == "X")
                     {
-                        oracleBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_TAB + EGlobalConfig.__STRING_SPACE + script);
+                        foreach (var script in scripts)
+                        {
+                            var oracleBatchBuilder_X = new StringBuilder(oracleBeginBlock)
+                                .Append(oracleNewLineTab).Append(script)
+                                .Append(oracleCommit).Append(oracleEndBlock);
+
+                            //this._app.SqlLogger.LogSql(oracleBatchBuilder_X.ToString());
+                            ScriptOracle_msgX.Add(oracleBatchBuilder_X.ToString());
+                        }
                     }
+                    else if(msgTypes == "W")
+                    {
+                        foreach (var script in scripts)
+                        {
+                            var oracleBatchBuilder_W = new StringBuilder(oracleBeginBlock)
+                                .Append(oracleNewLineTab).Append(script)
+                                .Append(oracleCommit).Append(oracleEndBlock);
 
-                    // Kết thúc transaction ngay khi kết thúc một
-                    oracleBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_ORACLE_COMMIT);
-                    oracleBatchBuilder.Append(EGlobalConfig.__STRING_ORACLE_BLOCK_END);
-                    this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
-                    ScriptOracle.Add(oracleBatchBuilder.ToString());
+                            //this._app.SqlLogger.LogSql(oracleBatchBuilder_W.ToString());
+                            ScriptOracle_msgX.Add(oracleBatchBuilder_W.ToString());
+                        }
+                    }
+                    else
+                    {
+                        var oracleBatchBuilder = new StringBuilder(oracleBeginBlock);
+                        foreach (var script in scripts)
+                        {
+                            oracleBatchBuilder.Append(oracleNewLineTab).Append(script);
+                        }
+                        oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
+
+                        //this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
+                        //this._app.SqlLogger.LogSqlSub(null, logFileName, oracleBatchBuilder.ToString());
+                        //this._app.SqlLogger.LogSqlSub(null, EPriceConfig.__LOG_SQL_FILENAME, oracleBatchBuilder.ToString());
+
+                        ScriptOracle.Add(oracleBatchBuilder.ToString());
+                    }
                 }
-                //foreach (var kvp in mssqlScriptsByType)
-                //{
-                //    var mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
-                //    int count = 0;
 
-                //    foreach (var script in kvp.Value)
-                //    {
-                //        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_EXEC + EGlobalConfig.__STRING_SPACE + script);
-
-                //        if (++count % sizebatch == 0)
-                //        {
-                //            mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
-                //            this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
-                //            Scriptmssql.Add(mssqlBatchBuilder.ToString());
-                //            mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
-                //        }
-                //    }
-
-                //    // Nếu còn script chưa commit, thì commit luôn
-                //    if (count % sizebatch != 0)
-                //    {
-                //        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
-                //        this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
-                //        Scriptmssql.Add(mssqlBatchBuilder.ToString());
-                //    }
-                //}
+                // Gửi trạng thái nếu có dữ liệu
                 if (stateRedis.TotalCountArrMsg > 0)
                 {
-                    this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HNX_Saver5G, stateRedis.TotalCountArrMsg, stateRedis.StopwatchRD);
+                    this._monitor.SendStatusToMonitor(
+                        this._app.Common.GetLocalDateTime(),
+                        this._app.Common.GetLocalIp(),
+                        CMonitor.MONITOR_APP.HNX_Saver5G,
+                        stateRedis.TotalCountArrMsg,
+                        stateRedis.StopwatchRD
+                    );
                 }
 
+                // Thực thi batch scripts
                 if (Scriptmssql.Any() || ScriptOracle.Any())
                 {
-                    await this._repository.ExecBulkScript(Scriptmssql, ScriptOracle);
-                    this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HNX_Saver5G_DB, arrMsg.Length, SW_RD.ElapsedMilliseconds);
+                    await this._repository.ExecBulkScript(Scriptmssql, ScriptOracle, ScriptOracle_msgX, ScriptOracle_msgW);
+                    this._monitor.SendStatusToMonitor(
+                        this._app.Common.GetLocalDateTime(),
+                        this._app.Common.GetLocalIp(),
+                        CMonitor.MONITOR_APP.HNX_Saver5G_DB,
+                        arrMsg.Length,
+                        SW_RD.ElapsedMilliseconds
+                    );
                 }
-
 
                 return true;
             }
@@ -198,8 +214,156 @@ namespace BaseSaverLib.Implementations
             {
                 _semaphore.Release();
             }
-
         }
+
+
+        //public async Task<bool> BuildScriptSQL(string[] arrMsg)
+        //{
+        //    await _semaphore.WaitAsync();
+        //    try
+        //    {
+        //        // Tạo dictionary để gom nhóm theo msgType
+        //        Dictionary<string, List<string>> mssqlScriptsByType = new();
+        //        Dictionary<string, List<string>> oracleScriptsByType = new();
+
+        //        var SW_RD = Stopwatch.StartNew();
+        //        StringBuilder mssqlBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
+        //        StringBuilder oracleBuilder = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
+        //        List<string> Scriptmssql = new List<string>();
+        //        List<string> ScriptOracle = new List<string>();
+        //        List<string> ScriptOracle_msgX = new List<string>();
+        //        EBulkScript eBulkScript = new EBulkScript();
+        //        EBulkScript[] arrBulkScript = new EBulkScript[0];
+        //        //int count = 0;
+        //        int sizebatch = 50;
+        //        var stateRedis = new ProcessStateRedis();
+
+        //        foreach (string msg in arrMsg)
+        //        {
+        //            string msgType = this._app.Common.GetMsgType(msg);
+        //            eBulkScript = await ProcessMessage(msgType, msg, stateRedis);
+
+        //            //count++;
+        //            if (!string.IsNullOrEmpty(eBulkScript.MssqlScript))
+        //            {
+        //                if (!mssqlScriptsByType.ContainsKey(msgType))
+        //                {
+        //                    mssqlScriptsByType[msgType] = new List<string>();
+        //                }
+        //                mssqlScriptsByType[msgType].Add(eBulkScript.MssqlScript);
+        //            }
+        //            if (!string.IsNullOrEmpty(eBulkScript.OracleScript))
+        //            {
+        //                if (!oracleScriptsByType.ContainsKey(msgType))
+        //                {
+        //                    oracleScriptsByType[msgType] = new List<string>();
+        //                }
+        //                oracleScriptsByType[msgType].Add(eBulkScript.OracleScript);
+
+        //                //var oracleBuilder_New = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN)
+        //                //.AppendLine(EGlobalConfig.__STRING_TAB + eBulkScript.OracleScript)
+        //                //.Append(EGlobalConfig.__STRING_ORACLE_BLOCK_END);
+        //                //ScriptOracle.Add(oracleBuilder_New.ToString());
+        //            }
+        //        }
+        //        // Mỗi msgType sẽ được bao trong 1 transaction
+        //        foreach (var kvp in mssqlScriptsByType)
+        //        {
+        //            var mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
+
+        //            foreach (var script in kvp.Value)
+        //            {
+        //                mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_EXEC + EGlobalConfig.__STRING_SPACE + script);
+        //            }
+
+        //            // Kết thúc transaction ngay khi kết thúc một msgType
+        //            mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
+        //            //this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
+        //            Scriptmssql.Add(mssqlBatchBuilder.ToString());
+        //        }
+
+        //        foreach (var kvp in oracleScriptsByType)
+        //        {
+        //            if(kvp.Key == "X")
+        //            {
+        //                var oracleBatchBuilder_X = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
+        //                foreach (var script in kvp.Value)
+        //                {
+        //                    oracleBatchBuilder_X.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_TAB + EGlobalConfig.__STRING_SPACE + script);
+        //                    oracleBatchBuilder_X.Append(EGlobalConfig.__STRING_ORACLE_COMMIT);
+        //                    oracleBatchBuilder_X.Append(EGlobalConfig.__STRING_ORACLE_BLOCK_END);
+        //                    this._app.SqlLogger.LogSql(oracleBatchBuilder_X.ToString());
+        //                    ScriptOracle_msgX.Add(oracleBatchBuilder_X.ToString());
+        //                    oracleBatchBuilder_X = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
+        //                }
+        //            }
+        //            else
+        //            {
+        //                var oracleBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
+
+        //                foreach (var script in kvp.Value)
+        //                {
+        //                    oracleBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_TAB + EGlobalConfig.__STRING_SPACE + script);
+        //                }
+
+        //                // Kết thúc transaction ngay khi kết thúc một
+        //                oracleBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_ORACLE_COMMIT);
+        //                oracleBatchBuilder.Append(EGlobalConfig.__STRING_ORACLE_BLOCK_END);
+        //                this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
+        //                ScriptOracle.Add(oracleBatchBuilder.ToString());
+        //            }
+        //        }
+        //        //foreach (var kvp in mssqlScriptsByType)
+        //        //{
+        //        //    var mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
+        //        //    int count = 0;
+
+        //        //    foreach (var script in kvp.Value)
+        //        //    {
+        //        //        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_EXEC + EGlobalConfig.__STRING_SPACE + script);
+
+        //        //        if (++count % sizebatch == 0)
+        //        //        {
+        //        //            mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
+        //        //            this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
+        //        //            Scriptmssql.Add(mssqlBatchBuilder.ToString());
+        //        //            mssqlBatchBuilder = new StringBuilder(EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION);
+        //        //        }
+        //        //    }
+
+        //        //    // Nếu còn script chưa commit, thì commit luôn
+        //        //    if (count % sizebatch != 0)
+        //        //    {
+        //        //        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE + EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION);
+        //        //        this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
+        //        //        Scriptmssql.Add(mssqlBatchBuilder.ToString());
+        //        //    }
+        //        //}
+        //        if (stateRedis.TotalCountArrMsg > 0)
+        //        {
+        //            this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HNX_Saver5G, stateRedis.TotalCountArrMsg, stateRedis.StopwatchRD);
+        //        }
+
+        //        if (Scriptmssql.Any() || ScriptOracle.Any())
+        //        {
+        //            await this._repository.ExecBulkScript(Scriptmssql, ScriptOracle,ScriptOracle_msgX);
+        //            this._monitor.SendStatusToMonitor(this._app.Common.GetLocalDateTime(), this._app.Common.GetLocalIp(), CMonitor.MONITOR_APP.HNX_Saver5G_DB, arrMsg.Length, SW_RD.ElapsedMilliseconds);
+        //        }
+
+
+        //        return true;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        this._app.ErrorLogger.LogError(ex);
+        //        return false;
+        //    }
+        //    finally
+        //    {
+        //        _semaphore.Release();
+        //    }
+
+        //}
 
         /// <summary>
         /// 2020-08-19 09:23:03 ngocta2
@@ -301,9 +465,9 @@ namespace BaseSaverLib.Implementations
                         eBulkScript = await _repository.GetScriptRandomEnd(eRE);
                         break;
                     // 4.10 Price
-                    case EPrice.__MSG_TYPE: 
-                        EPrice eP = this._app.HandCode.Fix_Fix2EPrice(rawData, true,1,2,1);
+                    case EPrice.__MSG_TYPE:
                         var stopWatch = Stopwatch.StartNew();
+                        EPrice eP = this._app.HandCode.Fix_Fix2EPrice(rawData, true,1,2,1);
                         //Update key giá khớp lệnh-- hiển thị cho phần chi tiết giá
                         if ((eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && eP.BoardID == "G1" && eP.Side == null)
                         {

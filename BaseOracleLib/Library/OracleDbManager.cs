@@ -27,7 +27,7 @@ namespace BaseOracleLib.Library
             {
                 if (_connection == null || _connection.State != ConnectionState.Open)
                 {
-                    _connection?.Dispose();
+                    _connection?.Dispose(); //giải phóng kết nối cũ
                     _connection = new OracleConnection(_connectionString);
                     await _connection.OpenAsync();
                 }

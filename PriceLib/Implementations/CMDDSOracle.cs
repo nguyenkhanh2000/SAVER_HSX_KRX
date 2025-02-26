@@ -107,38 +107,96 @@ namespace PriceLib.Implementations
                 return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
             }
         }
-    //    public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
-    //    {
-    //        Stopwatch m_SW = Stopwatch.StartNew();
-    //        TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
-    //        IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
-    //        EDalResult result;
-    //        try
-    //        {
-    //            var batches = scripts
-				//.Select((script, index) => new { script, index })
-				//.GroupBy(x => x.index / 50)
-				//.Select(g => g.Select(x => x.script));
-    //            foreach (var batch in batches)
-    //            {
-    //                var tasks = batch.Select(script => ExecuteScript(script));
-    //                await Task.WhenAll(tasks);                   
-    //            }
 
-    //            //int affectedRowCount = await oracle.ExecuteAsync(script);
-    //            //result = await oracle.ExecuteAsync(script);
-    //            result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
-    //            Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
-    //            return result;
-    //        }
-    //        catch (Exception ex)
-    //        {
-    //            // log error + buffer data
-    //            this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
-    //            // error => return null
-    //            return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
-    //        }
-    //    }
+        public async Task<EDalResult> ExecuteScriptPrice(List<string> scripts, List<string> scripts_msgX, List<string> scripts_msgW)
+        {
+            Stopwatch m_SW = Stopwatch.StartNew();
+            TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
+            IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
+            EDalResult result;
+            try
+            {
+                var task1 = scripts.Select(script => oracle.ExecuteAsync(script)).ToList();
+
+                // Chia scripts_msgX thành batches
+                var batchesX = scripts_msgX
+                    .Select((script, index) => new { script, index })
+                    .GroupBy(x => x.index / 50)
+                    .Select(g => g.Select(x => x.script));
+
+                // Chia scripts_msgW thành batches
+                var batchesW = scripts_msgW
+                    .Select((script, index) => new { script, index })
+                    .GroupBy(x => x.index / 50)
+                    .Select(g => g.Select(x => x.script));
+
+                // Tạo danh sách task chạy song song
+                var allTasks = new List<Task>(task1);
+
+                // Chạy từng batch song song với task1
+                foreach (var batch in batchesX)
+                {
+                    var taskX = batch.Select(script => ExecuteScript(script));
+                    allTasks.AddRange(taskX);
+                }
+
+                foreach (var batch in batchesW)
+                {
+                    var taskW = batch.Select(script => ExecuteScript(script));
+                    allTasks.AddRange(taskW);
+                }
+
+                // Đợi tất cả các tasks hoàn thành
+                await Task.WhenAll(allTasks);
+
+
+
+                //int affectedRowCount = await oracle.ExecuteAsync(script);
+                //result = await oracle.ExecuteAsync(script);
+                result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
+                Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                return result;
+            }
+            catch (Exception ex)
+            {
+                // log error + buffer data
+                this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+                // error => return null
+                return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+            }
+        }
+        //    public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
+        //    {
+        //        Stopwatch m_SW = Stopwatch.StartNew();
+        //        TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
+        //        IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
+        //        EDalResult result;
+        //        try
+        //        {
+        //            var batches = scripts
+        //.Select((script, index) => new { script, index })
+        //.GroupBy(x => x.index / 50)
+        //.Select(g => g.Select(x => x.script));
+        //            foreach (var batch in batches)
+        //            {
+        //                var tasks = batch.Select(script => ExecuteScript(script));
+        //                await Task.WhenAll(tasks);                   
+        //            }
+
+        //            //int affectedRowCount = await oracle.ExecuteAsync(script);
+        //            //result = await oracle.ExecuteAsync(script);
+        //            result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
+        //            Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+        //            return result;
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            // log error + buffer data
+        //            this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+        //            // error => return null
+        //            return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+        //        }
+        //    }
         /// <summary>
         /// 2020-07-24 10:55:58 ngocta2
         /// 4.1 Security Definition

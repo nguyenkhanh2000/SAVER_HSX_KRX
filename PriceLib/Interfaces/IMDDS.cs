@@ -45,7 +45,7 @@ namespace PriceLib.Interfaces
 		Task<EDalResult> ExecuteScript(string script);
 		Task<EDalResult> ExecuteScriptOracle(List<string> scripts);
 
-
+        Task<EDalResult> ExecuteScriptPrice(List<string> scripts, List<string> scripts_msgX, List<string> scripts_msgW);
 
         // THÊM MSG MJ
         Task<EDalResult> UpdateDrvProductEventAll(EDrvProductEvent eDrvProductEvent, bool getScriptOnly = false);
