@@ -56,6 +56,7 @@ namespace BaseSaverLib.Implementations
 
         private readonly CRedisConfig _redisConfig;
         private readonly CRedis_New _redis;
+        private readonly CRedisNewApp _redisNewApp;
         private Dictionary<string, string> d_dic_stockno = new Dictionary<string, string>();//dic lưu stock no của mess d
         public TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time"); // UTC+7
         /// <summary>
@@ -64,12 +65,13 @@ namespace BaseSaverLib.Implementations
         /// </summary>
         /// <param name="app"></param>
         /// <param name="repository"></param>
-        public CMDDSHandler(IS6GApp app, IMDDSRepository repository, CRedisConfig redisConfig,CRedis_New redis, CMonitor monitor)
+        public CMDDSHandler(IS6GApp app, IMDDSRepository repository, CRedisConfig redisConfig,CRedis_New redis, CRedisNewApp _redis_NewApp ,CMonitor monitor)
         {
             this._app = app;
             this._repository = repository;
             this._redisConfig = redisConfig;
             this._redis = redis;
+            this._redisNewApp = _redis_NewApp;
            this._monitor = monitor;
         }
         public string GetMsgTypeSAN(string rawData)
@@ -549,7 +551,11 @@ namespace BaseSaverLib.Implementations
                     string Z_KEY = TEMPLATE_REDIS_KEY_LS.Replace("(Symbol)", Symbol);
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
 
-                    await _redis.SortedSetAddAsync(Z_KEY, strJsonC, Z_SCORE);
+                    if(this._redisNewApp != null)
+                    {
+                        _redisNewApp.SortedSetAddAsync(Z_KEY, strJsonC, Z_SCORE);
+                    }
+
                 }
             }
             catch (Exception ex)
@@ -600,11 +606,12 @@ namespace BaseSaverLib.Implementations
                     string Z_KEY_VOL = TEMPLATE_REDIS_KEY_LE_TKTT_VOL.Replace("(Symbol)", Symbol);
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
                     //string Z_VALUE = strJsonC;
-
-                    await Task.WhenAll(
-                        _redis.SortedSetAddAsync(Z_KEY_VAL, strJsonC, Z_SCORE),
-                        _redis.SortedSetAddAsync(Z_KEY_VOL, strJsonC, Z_SCORE)
-                    );
+                    if(this._redisNewApp != null)
+                    {
+                        _redisNewApp.SortedSetAddAsync(Z_KEY_VAL, strJsonC, Z_SCORE);
+                        _redisNewApp.SortedSetAddAsync(Z_KEY_VOL, strJsonC, Z_SCORE);
+                    }
+                    
                 }
             }
             catch (Exception ex)

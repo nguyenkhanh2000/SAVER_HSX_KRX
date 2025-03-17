@@ -11,6 +11,8 @@ namespace PriceLib
         public string Endpoints_1 { get; set; }
         public string Endpoints_2 { get; set; }
         public int Redis_DB { get; set; }
+        public string Endpoints_NewApp { get; set; }
+        public int RedisDB_NewApps { get; set; }
         public string Host_FOX { get; set; }
 
         public int Port_FOX { get; set; }
