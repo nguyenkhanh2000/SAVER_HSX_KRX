@@ -76,10 +76,6 @@ namespace PriceLib.Implementations
                 
                 EDalResult result;
 
-                //foreach(var item in scripts)
-                //{
-                //                int affectedRowCount = await sqlServer.ExecuteAsync(item);
-                //            }
                 var tasks = scripts.Select(async script =>
                 {
                     try
@@ -121,7 +117,7 @@ namespace PriceLib.Implementations
                 //           }
 
                 result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
-                Console.WriteLine("SQL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                //Console.WriteLine("SQL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
                 return result;
             }
             catch (Exception ex)

@@ -14,11 +14,11 @@ using System.Threading;
 using SystemCore.Entities;
 using static BaseBrokerLib.EBrokerConfig;
 
-namespace HSXSaverApp
+namespace SAVER_HSX_KRX
 {
     public class Program
     {
-        static public Mutex _mutex = new Mutex(true, "SAVER_HSX_KRX");
+        static public Mutex _mutex = new Mutex(true, "SAVER_HSX_KRX_2");
         static public CS6GApp _app;
         static public EBrokerConfig _brokerConfig;
         static public CBroker _broker;
@@ -72,7 +72,6 @@ namespace HSXSaverApp
             //// Disconnect the client
             //Console.WriteLine("Done!");
             Task.Delay(-1).Wait();
-
         }
 
         /// <summary>
@@ -85,8 +84,10 @@ namespace HSXSaverApp
             {
                 // init config path
                 CS6GFactory.SetConfigPath(AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\'));
+                //CS6GFactory.SetConfigPath("E:\\KRX_APP\\SAVER_HSX_KRX_TEST");
+                //CS6GFactory.SetConfigPath(AppContext.BaseDirectory.TrimEnd('\\'));
 
-                Console.WriteLine("SetConfigPath");
+                Console.WriteLine(AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\'));
 
                 _app = CS6GFactory.GetS6GAppInstance();
 

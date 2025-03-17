@@ -22,6 +22,7 @@ Source  = {0} => {1} ({2}) [{3}]
 Data    = {4}";
 
 		private const string __TYPE_FOLDER = __TYPE_FOLDER_SQL;//"SQL";
+        private const string __LOG_SQL_DIRECTORY = @"D:\WebLog\";
 
         /// <summary>
         /// constructor
@@ -40,6 +41,29 @@ Data    = {4}";
         public void LogSql(string data)
         {
             this._logger.Information(__TEMPLATE, GetDeepCaller(), data);
+        }
+        public void LogSciptSQL(string fileName, string data) 
+        {
+            try
+            {
+                //this._logger.Information("[SQL LOG] {Caller}:\n{SqlData}", GetDeepCaller(), data);
+                //string logFilePath = Path.Combine(LogRootPath + "\\SQL", $"{fileName}.log");
+                // Xây dựng thư mục theo năm/tháng/ngày
+                string logDirectory = Path.Combine(LogRootPath, "SQL",
+                                   DateTime.UtcNow.ToLocalTime().ToString("yyyy"),
+                                   DateTime.UtcNow.ToLocalTime().ToString("MM"),
+                                   DateTime.UtcNow.ToLocalTime().ToString("dd"));
+                // Đảm bảo thư mục tồn tại
+                Directory.CreateDirectory(logDirectory);
+                // Đường dẫn file log
+                string logFilePath = Path.Combine(logDirectory, $"{fileName}.log");
+                // Ghi dữ liệu vào file log
+                File.AppendAllText(logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {data}{Environment.NewLine}");
+            }
+            catch (Exception ex)
+            {
+                this._logger.Error("Failed to write SQL log to file. Error: {Exception}", ex);
+            }
         }
 
         /// <summary>

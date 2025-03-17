@@ -205,7 +205,10 @@ namespace CommonLib.Implementations
             data = $"Source  = {GetDeepCaller()}\r\nData    = {data}";
             this.LogToKafka(__LEVEL_SQL, data);
         }
+        public void LogSciptSQL(string fileName, string data)
+        {
 
+        }
         public void LogSqlContext(TExecutionContext ec, string data)
         {
             data = $"Source  = {GetDeepCaller()} => {ec.Id} ({ThreadId}) [{TaskId}]\r\nData    = {data}";

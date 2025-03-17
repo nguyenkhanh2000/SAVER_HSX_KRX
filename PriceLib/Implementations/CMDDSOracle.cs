@@ -154,7 +154,7 @@ namespace PriceLib.Implementations
                 //int affectedRowCount = await oracle.ExecuteAsync(script);
                 //result = await oracle.ExecuteAsync(script);
                 result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
-                Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                //Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
                 return result;
             }
             catch (Exception ex)

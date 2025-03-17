@@ -19,6 +19,7 @@ namespace SystemCore.Interfaces
         /// </summary>
         /// <param name="data"></param>
         void LogSql(string data);
+        void LogSciptSQL(string filename,string data);
 
 
         /// <summary>

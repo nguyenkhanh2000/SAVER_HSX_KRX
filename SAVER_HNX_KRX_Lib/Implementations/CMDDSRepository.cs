@@ -72,17 +72,8 @@ namespace BaseSaverLib.Implementations
 
                 // Chờ cả hai hoàn thành
                 var results = await Task.WhenAll(mssqlTask, oracleTask);
-                Console.WriteLine("WHENALL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
-                //var results = await Task.WhenAll(mssqlTask);
-                //mssqlResult = results[0];
-                //oracleResult = results[1];
-                // return data
-                //return new EDalResult()
-                //{
-                //    Code = mssqlResult.Code + oracleResult.Code,
-                //    Message = mssqlResult.Message + "; " + oracleResult.Message,
-                //    Data = mssqlResult.Data
-                //};
+                //Console.WriteLine("WHENALL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                
                 return true;
             }
             catch (Exception ex)
