@@ -83,20 +83,9 @@ namespace PriceLib.Implementations
             {
                 var tasks = scripts.Select(script => oracle.ExecuteAsync(script));
                 await Task.WhenAll(tasks);
-                //var batches = scripts
-                //.Select((script, index) => new { script, index })
-                //.GroupBy(x => x.index / 50)
-                //.Select(g => g.Select(x => x.script));
-                //foreach (var batch in batches)
-                //{
-                //    var tasks = batch.Select(script => ExecuteScript(script));
-                //    await Task.WhenAll(tasks);
-                //}
-
-                //int affectedRowCount = await oracle.ExecuteAsync(script);
-                //result = await oracle.ExecuteAsync(script);
+                
                 result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
-                Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+                //Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
                 return result;
             }
             catch (Exception ex)

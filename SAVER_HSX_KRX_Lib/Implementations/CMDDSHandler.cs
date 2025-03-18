@@ -89,8 +89,7 @@ namespace BaseSaverLib.Implementations
                 var SW_RD = Stopwatch.StartNew();
                 var Scriptmssql = new List<string>();
                 var ScriptOracle = new List<string>();
-                var ScriptOracle_msgX = new List<string>();
-                var ScriptOracle_msgW = new List<string>();
+
                 var stateRedis = new ProcessStateRedis();
 
                 var sqlBeginTransaction = EGlobalConfig.__STRING_SQL_BEGIN_TRANSACTION;
@@ -105,6 +104,7 @@ namespace BaseSaverLib.Implementations
                 foreach (string msg in arrMsg)
                 {
                     string msgType = this._app.Common.GetMsgType(msg);
+
                     var eBulkScript = await ProcessMessage(msgType, msg, stateRedis);
 
                     if (!string.IsNullOrEmpty(eBulkScript.MssqlScript))
@@ -150,57 +150,20 @@ namespace BaseSaverLib.Implementations
                 // Tạo batch script cho Oracle
                 foreach (var (msgTypes, scripts) in oracleScriptsByType)
                 {
-                    if (msgTypes == "X")
+                    var oracleBatchBuilder = new StringBuilder(oracleBeginBlock);
+                    foreach (var script in scripts)
                     {
-                        foreach (var script in scripts)
-                        {
-                            var oracleBatchBuilder_X = new StringBuilder(oracleBeginBlock)
-                                .Append(oracleNewLineTab).Append(script)
-                                .Append(oracleCommit).Append(oracleEndBlock);
-
-                            this._app.SqlLogger.LogSql(oracleBatchBuilder_X.ToString());
-                            ScriptOracle_msgX.Add(oracleBatchBuilder_X.ToString());
-                            // Ghi log Oracle nhóm X
-                            //this._app.SqlLogger.LogSciptSQL($"OracleBatchX_{msgTypes}", oracleBatchBuilder_X.ToString());
-
-                            //Ghi log count
-                            //this._app.SqlLogger.LogSciptSQL($"OracleBatchX_{msgTypes}", $"{oracleBatchBuilder_X.ToString().Length}");
-                        }
+                        oracleBatchBuilder.Append(oracleNewLineTab).Append(script);
                     }
-                    else if (msgTypes == "W")
-                    {
-                        foreach (var script in scripts)
-                        {
-                            var oracleBatchBuilder_W = new StringBuilder(oracleBeginBlock)
-                                .Append(oracleNewLineTab).Append(script)
-                                .Append(oracleCommit).Append(oracleEndBlock);
+                    oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
 
-                            this._app.SqlLogger.LogSql(oracleBatchBuilder_W.ToString());
-                            ScriptOracle_msgX.Add(oracleBatchBuilder_W.ToString());
-                            // Ghi log chi tiết script Oracle nhóm W
-                            //this._app.SqlLogger.LogSciptSQL($"OracleBatchW_{msgTypes}", oracleBatchBuilder_W.ToString());
+                    this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
+                    ScriptOracle.Add(oracleBatchBuilder.ToString());
+                    // Ghi log Oracle các nhóm khác
+                    //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", oracleBatchBuilder.ToString());
 
-                            //Ghi log count
-                            //this._app.SqlLogger.LogSciptSQL($"OracleBatchW_{msgTypes}", $"{oracleBatchBuilder_W.ToString().Length}");
-                        }
-                    }
-                    else
-                    {
-                        var oracleBatchBuilder = new StringBuilder(oracleBeginBlock);
-                        foreach (var script in scripts)
-                        {
-                            oracleBatchBuilder.Append(oracleNewLineTab).Append(script);
-                        }
-                        oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
-
-                        this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
-                        ScriptOracle.Add(oracleBatchBuilder.ToString());
-                        // Ghi log Oracle các nhóm khác
-                        //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", oracleBatchBuilder.ToString());
-
-                        //Ghi log count
-                        //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
-                    }
+                    //Ghi log count
+                    //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
                 }
 
                 // Gửi trạng thái nếu có dữ liệu
@@ -218,7 +181,7 @@ namespace BaseSaverLib.Implementations
                 // Thực thi batch scripts
                 if (Scriptmssql.Any() || ScriptOracle.Any())
                 {
-                    await this._repository.ExecBulkScript(Scriptmssql, ScriptOracle, ScriptOracle_msgX, ScriptOracle_msgW);
+                    await this._repository.ExecBulkScript(Scriptmssql, ScriptOracle);
                     this._monitor.SendStatusToMonitor(
                         this._app.Common.GetLocalDateTime(),
                         this._app.Common.GetLocalIp(),
@@ -584,7 +547,7 @@ namespace BaseSaverLib.Implementations
                 string value = "";
                 if (d_dic_stockno.Count < 1)
                 {
-                    value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HNX);
+                    value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HSX);
 
                     if (!string.IsNullOrEmpty(value))
                     {
@@ -649,7 +612,7 @@ namespace BaseSaverLib.Implementations
                 string value = "";
                 if (d_dic_stockno.Count < 1)
                 {
-                    value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HNX);
+                    value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HSX);
 
                     if (!string.IsNullOrEmpty(value))
                     {
@@ -810,10 +773,9 @@ namespace BaseSaverLib.Implementations
                             .Replace("(Symbol)", Symbol);
 
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
-                    string Z_VALUE = TEMPLATE_REDIS_VALUE.Replace("(Now)", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"))
-                                         .Replace("(RedisData)", sbJsonC);
 
-                    await this._redis.SortedSetAddAsync(Z_KEY, Z_VALUE, intPeriod);
+                    this._redis.SetCache(Z_KEY, sbJsonC, intPeriod);
+
                 }
             }
             catch (Exception ex)

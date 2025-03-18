@@ -51,7 +51,7 @@ namespace BaseSaverLib.Implementations
         /// <param name="mssqlScript"></param>
         /// <param name="oracleScript"></param>
         /// <returns></returns>
-        public async Task<bool> ExecBulkScript(List<string> mssqlScript, List<string> oracleScript, List<string> oracleScript_msgX, List<string> oracleScript_msgW)
+        public async Task<bool> ExecBulkScript(List<string> mssqlScript, List<string> oracleScript)
         {
             TExecutionContext ec = this._app.DebugLogger.WriteBufferBegin($"begin mssqlScript={mssqlScript}; oracleScript={oracleScript}", true);
             EDalResult mssqlResult = null;
@@ -68,7 +68,7 @@ namespace BaseSaverLib.Implementations
                 //// wait all
                 //await Task.WhenAll(mssqlTask, oracleTask);
                 var mssqlTask = this._mssql.ExecuteScriptOracle(mssqlScript);
-                var oracleTask = this._oracle.ExecuteScriptPrice(oracleScript, oracleScript_msgX, oracleScript_msgW);
+                var oracleTask = this._oracle.ExecuteScriptOracle(oracleScript);
 
                 // Chờ cả hai hoàn thành
                 var results = await Task.WhenAll(mssqlTask, oracleTask);
