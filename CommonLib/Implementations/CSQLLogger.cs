@@ -42,21 +42,45 @@ Data    = {4}";
         {
             this._logger.Information(__TEMPLATE, GetDeepCaller(), data);
         }
-        public void LogSciptSQL(string fileName, string data) 
+        //public void LogSciptSQL(string fileName, string data) 
+        //{
+        //    try
+        //    {
+        //        //this._logger.Information("[SQL LOG] {Caller}:\n{SqlData}", GetDeepCaller(), data);
+        //        //string logFilePath = Path.Combine(LogRootPath + "\\SQL", $"{fileName}.log");
+        //        string logDirectory = Path.Combine(LogRootPath, "SQL");
+        //        // Xây dựng thư mục theo năm/tháng/ngày
+        //        //string logDirectory = Path.Combine(LogRootPath, "SQL",
+        //        //                   DateTime.UtcNow.ToLocalTime().ToString("yyyy"),
+        //        //                   DateTime.UtcNow.ToLocalTime().ToString("MM"),
+        //        //                   DateTime.UtcNow.ToLocalTime().ToString("dd"));
+        //        // Đảm bảo thư mục tồn tại
+        //        Directory.CreateDirectory(logDirectory);
+        //        // Đường dẫn file log
+        //        string logFilePath = Path.Combine(logDirectory, $"{fileName}.log");
+        //        // Ghi dữ liệu vào file log
+        //        File.AppendAllText(logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {data}{Environment.NewLine}");
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        this._logger.Error("Failed to write SQL log to file. Error: {Exception}", ex);
+        //    }
+        //}
+        public void LogSciptSQL(string fileName, string data)
         {
             try
             {
-                //this._logger.Information("[SQL LOG] {Caller}:\n{SqlData}", GetDeepCaller(), data);
-                //string logFilePath = Path.Combine(LogRootPath + "\\SQL", $"{fileName}.log");
-                // Xây dựng thư mục theo năm/tháng/ngày
-                string logDirectory = Path.Combine(LogRootPath, "SQL",
-                                   DateTime.UtcNow.ToLocalTime().ToString("yyyy"),
-                                   DateTime.UtcNow.ToLocalTime().ToString("MM"),
-                                   DateTime.UtcNow.ToLocalTime().ToString("dd"));
+                string logDirectory = Path.Combine(LogRootPath, "SQL");
+
                 // Đảm bảo thư mục tồn tại
                 Directory.CreateDirectory(logDirectory);
+
+                // Định dạng tên file log với ngày/tháng/năm
+                string formattedFileName = $"{DateTime.UtcNow:dd-MM-yyyy}_{fileName}.log";
+
                 // Đường dẫn file log
-                string logFilePath = Path.Combine(logDirectory, $"{fileName}.log");
+                string logFilePath = Path.Combine(logDirectory, formattedFileName);
+
                 // Ghi dữ liệu vào file log
                 File.AppendAllText(logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {data}{Environment.NewLine}");
             }

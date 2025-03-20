@@ -103,6 +103,8 @@ namespace BaseSaverLib.Implementations
                 // Duyệt từng tin nhắn và nhóm theo msgType
                 foreach (string msg in arrMsg)
                 {
+                    //Log Dequeue
+                    this._app.InfoLogger.LogInfo(msg);
                     string msgType = this._app.Common.GetMsgType(msg);
 
                     var eBulkScript = await ProcessMessage(msgType, msg, stateRedis);
@@ -138,7 +140,9 @@ namespace BaseSaverLib.Implementations
                     }
                     mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE).Append(sqlCommitTransaction);
 
-                    this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
+                    this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", mssqlBatchBuilder.ToString());
+
+                    //this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
                     Scriptmssql.Add(mssqlBatchBuilder.ToString());
                     // Ghi log SQL Server
                     //this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", mssqlBatchBuilder.ToString());
@@ -157,7 +161,9 @@ namespace BaseSaverLib.Implementations
                     }
                     oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
 
-                    this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
+                    this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", oracleBatchBuilder.ToString());
+
+                    //this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
                     ScriptOracle.Add(oracleBatchBuilder.ToString());
                     // Ghi log Oracle các nhóm khác
                     //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", oracleBatchBuilder.ToString());
