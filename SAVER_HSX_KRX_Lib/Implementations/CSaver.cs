@@ -38,8 +38,12 @@ namespace BaseSaverLib.Implementations
 		private readonly EPriceConfig _priceConfig;
         private readonly IMDDSHandler _handler;
         private readonly CRedisConfig _redisConfig;
-		
-		//private readonly CRedisClient _redisClient;
+        private readonly SemaphoreSlim semaphoreBroker = new SemaphoreSlim(1, 1);
+
+        private System.Timers.Timer m_tmrGroupREDIS = new System.Timers.Timer();
+        private System.Timers.Timer m_tmrGroupSQL = new System.Timers.Timer();
+        private System.Timers.Timer m_tmrGroupORACLE = new System.Timers.Timer();
+        //private readonly CRedisClient _redisClient;
         public CRedis_New m_RC;
         public System.Timers.Timer m_tmrProcessDataRedis;      // timer goi func xu ly du lieu insert REDIS (goi theo chu ky )
         public System.Timers.Timer m_tmrProcessDataDB;      // timer goi func xu ly du lieu insert DATABASE (goi theo chu ky )
@@ -82,6 +86,8 @@ namespace BaseSaverLib.Implementations
             //m_crbMQ = new CReaderBaseMQ(this._app, this._redisConfig);
             // this.InConfig();
             this.InitApp();
+            this.StartTimers();
+
 		}
 
 		/// <summary>
@@ -117,10 +123,23 @@ namespace BaseSaverLib.Implementations
 		{
 			try
 			{
-				if (this._broker != null) 
-				{
+                this.m_tmrGroupREDIS.Interval = _saverConfig.TIMER_PROCESS_DATA_REDIS;
+                this.m_tmrGroupREDIS.Elapsed += TimerProc_GroupREDIS_Wrapper;
 
-                    GetMessages();
+                this.m_tmrGroupSQL.Interval = _saverConfig.TIMER_PROCESS_DATA_DATABASE;
+                this.m_tmrGroupSQL.Elapsed += TimerProc_GroupSQL_Wrapper;
+
+                this.m_tmrGroupORACLE.Interval = _saverConfig.TIMER_PROCESS_DATA_DATABASE;
+                this.m_tmrGroupORACLE.Elapsed += TimerProc_GroupORACLE_Wrapper;
+
+                if (this._broker != null) 
+				{
+                    this._broker.OnMessage = (receviedMsg) => { this.ReceiveMessageFromMessageQueue(receviedMsg); };
+
+                    this._broker.SetupOnReceivedEventHandler(); // SetupOnReceivedEventHandler chi goi 1 lan, da dung o day thi ko setup o tren
+
+
+                    //GetMessages();
                 }
                 return true;
 			}
@@ -130,8 +149,57 @@ namespace BaseSaverLib.Implementations
 				return false;
 			}
 		}
+        private bool StartTimers()
+        {
+            try
+            {
+                this.m_tmrGroupREDIS.Enabled = true;
+                this.m_tmrGroupSQL.Enabled = true;
+                this.m_tmrGroupORACLE.Enabled = true;
 
-		public void GetMessages()
+                return true;
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+                return false;
+            }
+        }
+        private void TimerProc_GroupREDIS_Wrapper(object sender, ElapsedEventArgs e)
+        {
+            try
+            {
+                _ = this._handler.TimerProc_GroupREDIS();
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+            }
+        }
+        private void TimerProc_GroupSQL_Wrapper(object sender, ElapsedEventArgs e)
+        {
+            try
+            {
+                _ = this._handler.TimerProc_GroupSQL();
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+            }
+        }
+        private void TimerProc_GroupORACLE_Wrapper(object sender, ElapsedEventArgs e)
+        {
+            try
+            {
+                _ = this._handler.TimerProc_GroupORACLE();
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+            }
+        }
+
+        public void GetMessages()
 		{
 			try
 			{
@@ -202,7 +270,7 @@ namespace BaseSaverLib.Implementations
                 }
                 if (_msgArray != null) 
                 {
-                    HandlerMsgArr(_msgArray);
+                    this._handler.BuildScriptSQL(_msgArray);
                 }
             }
             catch (Exception ex)
@@ -210,77 +278,63 @@ namespace BaseSaverLib.Implementations
                 this._app.ErrorLogger.LogError(ex);
             }
         }
-        private void HandlerMsgArr(string[] arrMsg)
-        {
-            try
-            {
-                this._handler.BuildScriptSQL(arrMsg);
-            }
-            catch (Exception ex)
-            {
-                this._app.ErrorLogger.LogError(ex);
-            }
-        }
+
         /// <summary>
         /// 2020-07-17 10:41:34 ngocta2
         /// nhan dc msg tu queue
         /// </summary>
         /// <param name="messageBlock"></param>
         /// <returns></returns>
-        public bool ReceiveMessageFromMessageQueue(string messageBlock)
+        public async Task ReceiveMessageFromMessageQueue(string messageBlock)
 		{
-			try
+            await semaphoreBroker.WaitAsync();
+            try
 			{
 				Console.WriteLine($"{EGlobalConfig.DateTimeNow} - ReceiveMessageFromMessageQueue messageBlock.length={messageBlock.Length}");
 
-                // code run tren thread rieng
-                //Task.Run( () =>{
-                //      SendRawDataToWebApi(messageBlock);
-                //});
+				this._handler.ProcessAndEnqueueMessage(messageBlock);
 
-                //this._handler.UpdateBulk(messageBlock);
-
-
-                return true;
 			}
 			catch (Exception ex)
 			{
 				this._app.ErrorLogger.LogError(ex);
-				return false;
 			}
-		}
+            finally
+            {
+                semaphoreBroker.Release();
+            }
+        }
 
-
-		/// <summary>
-		/// 2020-08-31 16:23:51 ngocta2
-		/// fast speed
-		/// var client = new HttpClient { BaseAddress = new Uri(baseUrl), DefaultRequestVersion = new Version(2, 0) };
-		/// https://stackoverflow.com/questions/9145667/how-to-post-json-to-a-server-using-c => SUCCESS
-		/// 
-		/// // FAILED
-		//using (var httpClient = new HttpClient() { DefaultRequestVersion = new Version(2, 0) })
-		//{
-		//	using (var request = new HttpRequestMessage(new HttpMethod(EGlobalConfig.__STRING_METHOD_POST), this._saverConfig.PriceServiceUrl)) //"http://localhost:31006/api/mdds/update"
-		//	{
-		//		request.Content = new StringContent(messageBlock);
-		//		request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(EGlobalConfig.__STRING_CONTENT_TYPE_APPLICATION_X_WWW_FORM_URLENCODED); //"application/x-www-form-urlencoded"
-		//		httpClient.SendAsync(request);
-		//		///_ = httpClient.PostAsync(this._saverConfig.PriceServiceUrl, request.Content);
-		//	}
-		//}
-		//using (var client = new HttpClient())
-		//{
-		//	client.PostAsync(this._saverConfig.PriceServiceUrl, new StringContent(messageBlock, Encoding.UTF8, EGlobalConfig.__STRING_CONTENT_TYPE_APPLICATION_X_WWW_FORM_URLENCODED));
-		//}
-		/// </summary>
-		/// <param name="messageBlock">
-		//		8=FIX.4.49=51935=d49=VNMGW56=9999934=152=20190517 09:14:26.12830001=STO20004=G4911=3851207=HO55=VN000000KMR230624=KMR30628=172930629=MIRAE Joint Stock Company30630=MIRAE Joint Stock Company20009=S1STOST20003=STO30604=ST201=1194=541=106=ID00000083225=231=1.0223=0.015=VND20020=13660000001149=999999999.01148=-999999999.0202=0.0965=N30631=1.01193=236=0.020013=4930.020014=0.020015=0.020016=0.0140=4930.020027=330642=30511=30301=2017010130614=220018=0030625=0.030635=NRM30636=SNE30637=NRM10=056
-		//		8=FIX.4.49=51935=d49=VNMGW56=9999934=252=20190517 09:14:26.13430001=STO20004=T1911=3851207=HO55=VN000000KMR230624=KMR30628=172930629=MIRAE Joint Stock Company30630=MIRAE Joint Stock Company20009=S1STOST20003=STO30604=ST201=1194=541=106=ID00000083225=231=1.0223=0.015=VND20020=13660000001149=999999999.01148=-999999999.0202=0.0965=N30631=1.01193=236=0.020013=4930.020014=0.020015=0.020016=0.0140=4930.020027=330642=30511=30301=2017010130614=020018=0030625=0.030635=NRM30636=SNE30637=NRM10=062
-		//		8=FIX.4.49=48835=d49=VNMGW56=9999934=352=20190517 09:14:26.13830001=STO20004=G2911=3851207=HO55=VN000000KPF030624=KPF30628=173830629=CTCP TV DA QT KPF30630=CTCP TV DA QT KPF20009=S1STOST20003=STO30604=ST201=1194=541=106=ID00000120225=231=1.0223=0.015=VND20020=13645000001149=0.01148=0.0202=0.0965=N30631=1.01193=236=0.020013=10600.020014=0.020015=0.020016=0.0140=10600.020027=330642=30511=30301=2016021830614=020018=0030625=0.030635=NRM30636=SNE30637=NRM10=014
-		//		8=FIX.4.49=48435=d49=VNMGW56=9999934=452=20190517 09:14:26.14330001=STO20004=G3911=3851207=HO55=VN000000KPF030624=KPF30628=173830629=CTCP TV DA QT KPF30630=CTCP TV DA QT KPF20009=S1STOST20003=STO30604=ST201=1194=541=106=ID00000120225=231=1.0223=0.015=VND20020=13645000001149=0.01148=0.0202=0.0965=N30631=1.01193=236=0.020013=0.020014=0.020015=0.020016=0.0140=10600.020027=330642=30511=30301=2016021830614=020018=0030625=0.030635=NRM30636=SNE30637=NRM10=065
-		/// </param>
-		/// <returns></returns>
-		public void  SendRawDataToWebApi(string messageBlock)
+        /// <summary>
+        /// 2020-08-31 16:23:51 ngocta2
+        /// fast speed
+        /// var client = new HttpClient { BaseAddress = new Uri(baseUrl), DefaultRequestVersion = new Version(2, 0) };
+        /// https://stackoverflow.com/questions/9145667/how-to-post-json-to-a-server-using-c => SUCCESS
+        /// 
+        /// // FAILED
+        //using (var httpClient = new HttpClient() { DefaultRequestVersion = new Version(2, 0) })
+        //{
+        //	using (var request = new HttpRequestMessage(new HttpMethod(EGlobalConfig.__STRING_METHOD_POST), this._saverConfig.PriceServiceUrl)) //"http://localhost:31006/api/mdds/update"
+        //	{
+        //		request.Content = new StringContent(messageBlock);
+        //		request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(EGlobalConfig.__STRING_CONTENT_TYPE_APPLICATION_X_WWW_FORM_URLENCODED); //"application/x-www-form-urlencoded"
+        //		httpClient.SendAsync(request);
+        //		///_ = httpClient.PostAsync(this._saverConfig.PriceServiceUrl, request.Content);
+        //	}
+        //}
+        //using (var client = new HttpClient())
+        //{
+        //	client.PostAsync(this._saverConfig.PriceServiceUrl, new StringContent(messageBlock, Encoding.UTF8, EGlobalConfig.__STRING_CONTENT_TYPE_APPLICATION_X_WWW_FORM_URLENCODED));
+        //}
+        /// </summary>
+        /// <param name="messageBlock">
+        //		8=FIX.4.49=51935=d49=VNMGW56=9999934=152=20190517 09:14:26.12830001=STO20004=G4911=3851207=HO55=VN000000KMR230624=KMR30628=172930629=MIRAE Joint Stock Company30630=MIRAE Joint Stock Company20009=S1STOST20003=STO30604=ST201=1194=541=106=ID00000083225=231=1.0223=0.015=VND20020=13660000001149=999999999.01148=-999999999.0202=0.0965=N30631=1.01193=236=0.020013=4930.020014=0.020015=0.020016=0.0140=4930.020027=330642=30511=30301=2017010130614=220018=0030625=0.030635=NRM30636=SNE30637=NRM10=056
+        //		8=FIX.4.49=51935=d49=VNMGW56=9999934=252=20190517 09:14:26.13430001=STO20004=T1911=3851207=HO55=VN000000KMR230624=KMR30628=172930629=MIRAE Joint Stock Company30630=MIRAE Joint Stock Company20009=S1STOST20003=STO30604=ST201=1194=541=106=ID00000083225=231=1.0223=0.015=VND20020=13660000001149=999999999.01148=-999999999.0202=0.0965=N30631=1.01193=236=0.020013=4930.020014=0.020015=0.020016=0.0140=4930.020027=330642=30511=30301=2017010130614=020018=0030625=0.030635=NRM30636=SNE30637=NRM10=062
+        //		8=FIX.4.49=48835=d49=VNMGW56=9999934=352=20190517 09:14:26.13830001=STO20004=G2911=3851207=HO55=VN000000KPF030624=KPF30628=173830629=CTCP TV DA QT KPF30630=CTCP TV DA QT KPF20009=S1STOST20003=STO30604=ST201=1194=541=106=ID00000120225=231=1.0223=0.015=VND20020=13645000001149=0.01148=0.0202=0.0965=N30631=1.01193=236=0.020013=10600.020014=0.020015=0.020016=0.0140=10600.020027=330642=30511=30301=2016021830614=020018=0030625=0.030635=NRM30636=SNE30637=NRM10=014
+        //		8=FIX.4.49=48435=d49=VNMGW56=9999934=452=20190517 09:14:26.14330001=STO20004=G3911=3851207=HO55=VN000000KPF030624=KPF30628=173830629=CTCP TV DA QT KPF30630=CTCP TV DA QT KPF20009=S1STOST20003=STO30604=ST201=1194=541=106=ID00000120225=231=1.0223=0.015=VND20020=13645000001149=0.01148=0.0202=0.0965=N30631=1.01193=236=0.020013=0.020014=0.020015=0.020016=0.0140=10600.020027=330642=30511=30301=2016021830614=020018=0030625=0.030635=NRM30636=SNE30637=NRM10=065
+        /// </param>
+        /// <returns></returns>
+        public void  SendRawDataToWebApi(string messageBlock)
 		{
 			try
 			{

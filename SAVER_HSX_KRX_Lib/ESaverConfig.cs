@@ -11,5 +11,7 @@ namespace BaseSaverLib
 		public string PriceServiceUrl { get; set; }
         public int BatchSize { get; set; }
         public int TIME_DELAY { get; set; }
+		public int TIMER_PROCESS_DATA_REDIS { get; set; }
+		public int TIMER_PROCESS_DATA_DATABASE {  get; set; }	
     }
 }

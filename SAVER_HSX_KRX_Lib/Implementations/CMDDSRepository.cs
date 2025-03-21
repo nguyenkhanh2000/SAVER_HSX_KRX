@@ -42,7 +42,40 @@ namespace BaseSaverLib.Implementations
             this._oracle = new CMDDSOracle(app, _priceConfig);
             this._mssql = new CMDDSMssql(app, _priceConfig);
         }
+        public async Task<bool> ExecBulkScript_SqlServer(List<string> mssqlScript)
+        {
+            TExecutionContext ec = this._app.DebugLogger.WriteBufferBegin($"begin mssqlScript={mssqlScript}", true);
+            EDalResult mssqlResult = null;
+            Stopwatch m_SW = Stopwatch.StartNew();
+            try
+            {
+                await this._mssql.ExecuteScriptOracle(mssqlScript);
+                return true;
+            }
+            catch (Exception ex) 
+            {
+                this._app.ErrorLogger.LogErrorContext(ex, ec);
+               
+                return false;
+            }
+        }
+        public async Task<bool> ExecBulkScript_Oracle(List<string> oracleScript)
+        {
+            TExecutionContext ec = this._app.DebugLogger.WriteBufferBegin($"begin oracleScript={oracleScript}", true);
+            EDalResult mssqlResult = null;
+            Stopwatch m_SW = Stopwatch.StartNew();
+            try
+            {
+                await this._oracle.ExecuteScriptOracle(oracleScript);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogErrorContext(ex, ec);
 
+                return false;
+            }
+        }
 
         /// <summary>
         /// 2020-08-04 14:11:01 ngocta2
