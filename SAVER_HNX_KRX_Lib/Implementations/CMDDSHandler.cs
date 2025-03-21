@@ -107,7 +107,7 @@ namespace BaseSaverLib.Implementations
                 foreach (string msg in arrMsg)
                 {
                     //Log Dequeue
-                    this._app.InfoLogger.LogInfo(msg);
+                    //this._app.InfoLogger.LogInfo(msg);
 
                     string msgType = this._app.Common.GetMsgType(msg);
                     var eBulkScript = await ProcessMessage(msgType, msg, stateRedis);
@@ -143,7 +143,7 @@ namespace BaseSaverLib.Implementations
                     }
                     mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE).Append(sqlCommitTransaction);
 
-                    this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", mssqlBatchBuilder.ToString());
+                    //this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", mssqlBatchBuilder.ToString());
 
                     //this._app.SqlLogger.LogSql(mssqlBatchBuilder.ToString());
 
@@ -152,7 +152,7 @@ namespace BaseSaverLib.Implementations
                     //this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", mssqlBatchBuilder.ToString());
 
                     //Ghi log count 
-                    //this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", $"{mssqlBatchBuilder.ToString().Length}");
+                    this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", $"{mssqlBatchBuilder.ToString().Length}");
 
                 }
 
@@ -165,7 +165,7 @@ namespace BaseSaverLib.Implementations
                         oracleBatchBuilder.Append(oracleNewLineTab).Append(script);
                     }
                     oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
-                    this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", oracleBatchBuilder.ToString());
+                    //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", oracleBatchBuilder.ToString());
 
                     //this._app.SqlLogger.LogSql(oracleBatchBuilder.ToString());
 
@@ -174,7 +174,7 @@ namespace BaseSaverLib.Implementations
                     //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", oracleBatchBuilder.ToString());
 
                     //Ghi log count
-                    //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
+                    this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
                 }
 
                 // Gửi trạng thái nếu có dữ liệu

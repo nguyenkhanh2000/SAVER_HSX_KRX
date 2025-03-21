@@ -59,14 +59,7 @@ namespace BaseSaverLib.Implementations
             Stopwatch m_SW = Stopwatch.StartNew();
             try
             {
-                // update vao MSSQL
-                //Task mssqlTask = Task.Run(async () => mssqlResult = await this._mssql.ExecuteScript(mssqlScript));
 
-                //// update vao ORACLE
-                //Task oracleTask = Task.Run(async () => oracleResult = await this._oracle.ExecuteScript(oracleScript));
-
-                //// wait all
-                //await Task.WhenAll(mssqlTask, oracleTask);
                 var mssqlTask  = this._mssql.ExecuteScriptOracle(mssqlScript);
                 var oracleTask = this._oracle.ExecuteScriptOracle(oracleScript);
 

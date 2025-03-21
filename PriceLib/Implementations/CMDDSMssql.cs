@@ -76,45 +76,22 @@ namespace PriceLib.Implementations
                 
                 EDalResult result;
 
-                var tasks = scripts.Select(async script =>
-                {
-                    try
-                    {
-                        await sqlServer.ExecuteAsync(script);
-                    }
-                    catch (Exception ex)
-                    {
-                        this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
-                    }
-                });
+                var tasks = scripts.Select(script => sqlServer.ExecuteAsync(script));
                 await Task.WhenAll(tasks);
-                //var batches = scripts
-                //.Select((script, index) => new { script, index })
-                //.GroupBy(x => x.index / 50)
-                //.Select(g => g.Select(x => x.script));
-                //foreach (var batch in batches)
+
+                //var tasks = scripts.Select(async script =>
                 //{
-                //    var tasks = batch.Select(script => ExecuteScript(script));
-                //    await Task.WhenAll(tasks);
-                //}
-                //int affectedRowCount = await sqlServer.ExecuteAsync(scripts);
+                //    try
+                //    {
+                //        await sqlServer.ExecuteAsync(script);
+                //    }
+                //    catch (Exception ex)
+                //    {
+                //        this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+                //    }
+                //});
+                //await Task.WhenAll(tasks);
 
-                //var batches = scripts
-                //.Select((script, index) => new { script, index })
-                //.GroupBy(x => x.index / 50) // Chia thành batch 50 SP
-                //.Select(g => g.Select(x => x.script).ToList());
-
-                //           foreach (var batch in batches)
-                //           {
-                //               using (var transactionScope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
-                //               {
-                //                   foreach (var script in batch)
-                //                   {
-                //                       await sqlServer.ExecuteAsync(script); // Thực thi từng SP trong transaction
-                //                   }
-                //                   transactionScope.Complete(); // Commit tất cả nếu thành công
-                //               }
-                //           }
 
                 result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
                 //Console.WriteLine("SQL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());

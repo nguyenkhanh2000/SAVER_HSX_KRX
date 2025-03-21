@@ -206,63 +206,21 @@ namespace BaseOracleLib.Implementations
 
             try
 			{
-                using (OracleConnection connection = await new OracleDbManager(_connectionString).GetConnectionAsync())
-                {
-                    //Console.WriteLine($"Connection State: {connection?.State}");
-
-                    using (OracleCommand command = new OracleCommand(sql, connection) { CommandType = CommandType.Text })
-                    {
-                        //Console.WriteLine($"Command created successfully.");
-                        return await command.ExecuteNonQueryAsync();
-                    }
-                }
+                var connection = await _dbManager.GetConnectionAsync();
+                await using var command = new OracleCommand(sql, connection) { CommandType = CommandType.Text };
+                affectedRowCount = await command.ExecuteNonQueryAsync();
 
 
-
-                //await using var connection = new OracleConnection(this._connectionString);
-                //await connection.OpenAsync();
-
-                //await using var command = new OracleCommand(sql, connection) { CommandType = CommandType.Text };
-                //var results = await command.ExecuteNonQueryAsync();
-                //return results;
-
-
-
-
-
-
-                //using (OracleConnection connection = await _dbManager.GetConnectionAsync())
-                //            using (OracleCommand command = new OracleCommand(sql, connection))
-                //            using (OracleTransaction transaction = connection.BeginTransaction())
+                //using (OracleConnection connection = await new OracleDbManager(_connectionString).GetConnectionAsync())
                 //{
-                //                command.CommandType = CommandType.Text;
-                //                command.Transaction = transaction;
-                //                affectedRowCount = await command.ExecuteNonQueryAsync();
-                //                transaction.Commit();
-                //            }	
-                //          using (OracleConnection connection = await _dbManager.GetConnectionAsync())
-                //          {
-                //              //await connection.OpenAsync();
+                //    //Console.WriteLine($"Connection State: {connection?.State}");
 
-                //              using (OracleTransaction transaction = connection.BeginTransaction())
-                //              using (OracleCommand command = new OracleCommand(sql, connection))
-                //              {
-                //                  command.CommandType = CommandType.Text;
-                //                  command.Transaction = transaction;
-
-                //                  //affectedRowCount = await command.ExecuteNonQueryAsync();
-                //affectedRowCount = command.ExecuteNonQuery();
-                //                  transaction.Commit();
-                //              }
-                //          } // Connection sẽ tự đóng khi thoát khỏi using
-
-                //await using var connection = await _dbManager.GetConnectionAsync();
-                //await using var command = new OracleCommand(sql, connection)
-                //{
-                //    CommandType = CommandType.Text,
-                //};
-
-                //affectedRowCount = await command.ExecuteNonQueryAsync();
+                //    using (OracleCommand command = new OracleCommand(sql, connection) { CommandType = CommandType.Text })
+                //    {
+                //        //Console.WriteLine($"Command created successfully.");
+                //        return await command.ExecuteNonQueryAsync();
+                //    }
+                //}
 
 
                 //result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = affectedRowCount };

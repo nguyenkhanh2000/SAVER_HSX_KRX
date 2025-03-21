@@ -29,7 +29,9 @@ namespace BaseSqlServerLib.Implementations
 		// vars
 		private readonly IS6GApp _app;
 		private readonly string _connectionString;
-		private SemaphoreSlim _semaphore = new SemaphoreSlim(1,1);
+
+        private readonly SqlServerDBManager _dbManager;
+        private SemaphoreSlim _semaphore = new SemaphoreSlim(1,1);
         // ==============================================================
       //  private readonly SqlConnection connection;
         /// <summary>
@@ -42,6 +44,7 @@ namespace BaseSqlServerLib.Implementations
 		{
             this._app = app;              
 			this._connectionString = connectionString;
+			_dbManager = new SqlServerDBManager(connectionString);
         }
 
 		/// <summary>
@@ -123,33 +126,16 @@ namespace BaseSqlServerLib.Implementations
             int affectedRows = 0;
             try
             {
-				//using (SqlConnection connection = new SqlConnection(this._connectionString))
-				//{
-				//    await connection.OpenAsync();
+                var connection = await _dbManager.GetConnectionAsync();
+                await using var command = new SqlCommand(sql, connection) { CommandType = CommandType.Text };
+                affectedRows = await command.ExecuteNonQueryAsync();
 
-				//    // log before
-				//    //this._app.SqlLogger.LogSql(ec.Data);
-				//    // exec async
-				//    //affectedRows = await connection.ExecuteAsync(sql);
-				//    using (SqlCommand command = new SqlCommand(sql, connection))
-				//    {
-				//        command.CommandType = CommandType.Text;
-				//        //affectedRows = await command.ExecuteNonQueryAsync();
-				//        affectedRows = command.ExecuteNonQuery();
-				//    }
-				//    // log after: khong lay duoc data return, output sau khi exec; caller phai tu log neu can
-				//    //this._app.SqlLogger.LogSql(this._app.Common.GetResultInfo(affectedRows));
-				//    //await connection.CloseAsync();
-				//}
+                //            await using var connection = new SqlConnection(this._connectionString);
+                //await connection.OpenAsync();
 
-
-
-				await using var connection = new SqlConnection(this._connectionString);
-				await connection.OpenAsync();
-
-				await using var command = new SqlCommand(sql, connection) { CommandType = CommandType.Text };
-				return await command.ExecuteNonQueryAsync();
-			}
+                //await using var command = new SqlCommand(sql, connection) { CommandType = CommandType.Text };
+                //return await command.ExecuteNonQueryAsync();
+            }
             catch (Exception ex)
             {
                 // log error + buffer data
