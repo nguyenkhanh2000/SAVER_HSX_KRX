@@ -76,7 +76,7 @@ Data    = {4}";
                 Directory.CreateDirectory(logDirectory);
 
                 // Định dạng tên file log với ngày/tháng/năm
-                string formattedFileName = $"{DateTime.UtcNow:dd-MM-yyyy}_{fileName}.log";
+                string formattedFileName = $"{DateTime.Now:dd-MM-yyyy}_{fileName}.log";
 
                 // Đường dẫn file log
                 string logFilePath = Path.Combine(logDirectory, formattedFileName);

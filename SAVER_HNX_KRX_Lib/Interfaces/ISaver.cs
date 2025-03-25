@@ -7,6 +7,6 @@ namespace BaseSaverLib.Interfaces
 	public interface ISaver
 	{
 		bool InitApp();
-		bool ReceiveMessageFromMessageQueue(string messageBlock);
+		Task ReceiveMessageFromMessageQueue(string messageBlock);
 	}
 }

@@ -24,6 +24,7 @@ using static App.Metrics.Formatters.Json.BucketTimerMetric;
 using StockCore.TAChart.Entities;
 using System.Collections.Concurrent;
 using System.Collections;
+using System.Diagnostics.Metrics;
 
 namespace BaseSaverLib.Implementations
 {
@@ -34,8 +35,8 @@ namespace BaseSaverLib.Implementations
         private readonly SemaphoreSlim semaphoreSQL = new SemaphoreSlim(1, 1);
         private readonly SemaphoreSlim semaphoreORACLE = new SemaphoreSlim(1, 1);
         private ConcurrentQueue<EPrice> m_queueRedis = new ConcurrentQueue<EPrice>();
-        private ConcurrentQueue<string> m_queueSQL = new ConcurrentQueue<string>();
-        private ConcurrentQueue<string> m_queueOracle = new ConcurrentQueue<string>();
+        private ConcurrentQueue<SqlMessage> m_queueSQL = new ConcurrentQueue<SqlMessage>();
+        private ConcurrentQueue<SqlMessage> m_queueOracle = new ConcurrentQueue<SqlMessage>();
         Stopwatch m_SW = new Stopwatch();
 
         // vars
@@ -99,17 +100,20 @@ namespace BaseSaverLib.Implementations
                 //Lấy type của msg
                 string msgType = this._app.Common.GetMsgType(strMessage);
 
+                this._app.SqlLogger.LogSciptSQL($"LogRawData_{msgType}", $"{strMessage}");
+
                 var stateRedis = new ProcessStateRedis();
 
                 var eBulkScript = ProcessMessage(msgType, strMessage, stateRedis).GetAwaiter().GetResult();
 
                 if (!string.IsNullOrEmpty(eBulkScript.MssqlScript))
                 {
-                    EnqueueMsg(this.m_queueSQL, eBulkScript.MssqlScript);
+                    EnqueueMsg(this.m_queueSQL, new SqlMessage(msgType, eBulkScript.MssqlScript));
                 }
+
                 if (!string.IsNullOrEmpty(eBulkScript.OracleScript))
                 {
-                    EnqueueMsg(this.m_queueOracle, eBulkScript.OracleScript);
+                    EnqueueMsg(this.m_queueOracle, new SqlMessage(msgType, eBulkScript.OracleScript));
                 }
             }
             catch (Exception ex)
@@ -117,11 +121,11 @@ namespace BaseSaverLib.Implementations
                 this._app.ErrorLogger.LogError(ex);
             }
         }
-        private bool EnqueueMsg(ConcurrentQueue<string> queue, string message)
+        private bool EnqueueMsg(ConcurrentQueue<SqlMessage> queue, SqlMessage message)
         {
             try
             {
-                if (queue != null && !string.IsNullOrEmpty(message))
+                if (queue != null && message != null)
                 {
                     queue.Enqueue(message);
                 }
@@ -144,7 +148,7 @@ namespace BaseSaverLib.Implementations
                 var stopWatch = Stopwatch.StartNew();
                 while (/*stopWatch.ElapsedMilliseconds < 500 &&*/ this.m_queueRedis.TryDequeue(out var obj_msgX))
                 {
-                    var CW = Stopwatch.StartNew();
+                    //var CW = Stopwatch.StartNew();
 
                     if (obj_msgX != null)
                     {
@@ -153,6 +157,13 @@ namespace BaseSaverLib.Implementations
                         //this._app.InfoLogger.LogInfo(JsonConvert.SerializeObject(obj_msgX));
                     }
                 }
+
+                //this._monitor.SendStatusToMonitor(
+                //this._app.Common.GetLocalDateTime(),
+                //this._app.Common.GetLocalIp(),
+                //CMonitor.MONITOR_APP.HSX_Feeder5G_Q,
+                //intTotalRow,
+                //stopWatch.ElapsedMilliseconds);
 
                 //send Monitor
                 this._monitor.SendStatusToMonitor(
@@ -183,29 +194,23 @@ namespace BaseSaverLib.Implementations
                 var sqlCommitTransaction = EGlobalConfig.__STRING_SQL_COMMIT_TRANSACTION;
                 var Scriptmssql = new List<string>();
                 int totalcount = 0;
-                while (this.m_queueSQL.TryDequeue(out var strCSV))
+                int maxBatchSize = 1000; // Giới hạn tối đa 500 message mỗi lần xử lý
+                int count = 0;
+                while (count < maxBatchSize &&  this.m_queueSQL.TryDequeue(out var objMsg))
                 {
-                    if (!string.IsNullOrEmpty(strCSV))
+                    if (objMsg != null)
                     {
-                        string msgType = "";
-                        
-                        Regex regex = new Regex(@"@aMsgType\s*=\s*'([^']*)'");
-                        Match match = regex.Match(strCSV);
-                        if (match.Success)
-                        {
-                            msgType = match.Groups[1].Value;
-                        }
-                        else
-                        {
-                            this._app.InfoLogger.LogInfo($"TimerProc_GroupSQL: msgType không tìm thấy: {msgType}");
-                        }
+                        string msgType = objMsg.MsgType;
+                        string strMsg = objMsg.Script;
+
                         if (!mssqlScriptsByType.TryGetValue(msgType, out var mssqlList))
                         {
                             mssqlList = new List<string>();
                             mssqlScriptsByType[msgType] = mssqlList;
                         }
-                        mssqlList.Add(strCSV);
+                        mssqlList.Add(strMsg);
                         totalcount++;
+                        count++; // Tăng biến đếm lên 1
                     }
                 }
                 foreach (var (msgType, scripts) in mssqlScriptsByType)
@@ -221,15 +226,14 @@ namespace BaseSaverLib.Implementations
                     //Ghi log count 
                     this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", $"{mssqlBatchBuilder.ToString().Length}");
                 }
-                //await this._repository.ExecBulkScript_SqlServer(Scriptmssql);
+                await this._repository.ExecBulkScript_SqlServer(Scriptmssql);
 
                 this._monitor.SendStatusToMonitor(
                 this._app.Common.GetLocalDateTime(),
                 this._app.Common.GetLocalIp(),
                 CMonitor.MONITOR_APP.HSX_Saver5G,
                 totalcount,
-                SW_RD.ElapsedMilliseconds
-            );
+                SW_RD.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
@@ -252,32 +256,27 @@ namespace BaseSaverLib.Implementations
                 var oracleNewLineTab = $"{EGlobalConfig.__STRING_RETURN_NEW_LINE}{EGlobalConfig.__STRING_TAB}{EGlobalConfig.__STRING_SPACE}";
                 var ScriptOracle = new List<string>();
                 int totalcount = 0;
+                int maxBatchSize = 1000; // Giới hạn tối đa 500 message mỗi lần xử lý
+                int count = 0;
                 var SW_RD = Stopwatch.StartNew();
-                while (this.m_queueOracle.TryDequeue(out var strCSV))
+                while (count < maxBatchSize &&  this.m_queueOracle.TryDequeue(out var objMsg))
                 {
-                    if (!string.IsNullOrEmpty(strCSV))
+                    if (objMsg != null)
                     {
-                        string msgType = "";
+                        string msgType = objMsg.MsgType;
+                        string strMsg = objMsg.Script;
 
-                        // Regex để lấy msgType
-                        Match match = Regex.Match(strCSV, @"price\.prc_msg_([A-Z])");
-
-                        if (match.Success)
-                        {
-                            msgType = match.Groups[1].Value;
-                        }
-                        else
-                        {
-                            this._app.InfoLogger.LogInfo($"TimerProc_GroupOracle: msgType không tìm thấy: {msgType}");
-                        }
+                        //if (msgType.Equals("x", StringComparison.OrdinalIgnoreCase))
+                        //    continue;
 
                         if (!oracleScriptsByType.TryGetValue(msgType, out var oracleList))
                         {
                             oracleList = new List<string>();
                             oracleScriptsByType[msgType] = oracleList;
                         }
-                        oracleList.Add(strCSV);
+                        oracleList.Add(strMsg);
                         totalcount++;
+                        count++; // Tăng biến đếm lên 1
                     }
                 }
                 foreach (var (msgTypes, scripts) in oracleScriptsByType)
@@ -294,15 +293,14 @@ namespace BaseSaverLib.Implementations
                     //Ghi log count
                     this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
                 }
-                this._repository.ExecBulkScript_Oracle(ScriptOracle);
+                await this._repository.ExecBulkScript_Oracle(ScriptOracle);
 
                 this._monitor.SendStatusToMonitor(
                 this._app.Common.GetLocalDateTime(),
                 this._app.Common.GetLocalIp(),
                 CMonitor.MONITOR_APP.HSX_Saver5G,
                 totalcount,
-                SW_RD.ElapsedMilliseconds
-            );
+                SW_RD.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
@@ -981,5 +979,16 @@ namespace BaseSaverLib.Implementations
     {
         public int TotalCountArrMsg { get; set; }
         public long StopwatchRD { get; set; }
+    }
+    public class SqlMessage
+    {
+        public string MsgType { get; set; }
+        public string Script { get; set; }
+
+        public SqlMessage(string msgType, string script)
+        {
+            MsgType = msgType;
+            Script = script;
+        }
     }
 }

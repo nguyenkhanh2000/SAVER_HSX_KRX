@@ -290,7 +290,7 @@ namespace BaseSaverLib.Implementations
             await semaphoreBroker.WaitAsync();
             try
 			{
-				Console.WriteLine($"{EGlobalConfig.DateTimeNow} - ReceiveMessageFromMessageQueue messageBlock.length={messageBlock.Length}");
+				//Console.WriteLine($"{EGlobalConfig.DateTimeNow} - ReceiveMessageFromMessageQueue messageBlock.length={messageBlock.Length}");
 
 				this._handler.ProcessAndEnqueueMessage(messageBlock);
 

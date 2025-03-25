@@ -70,64 +70,86 @@ namespace PriceLib.Implementations
             Stopwatch m_SW = Stopwatch.StartNew();
             TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
             ISqlServer<ESecurityDefinition> sqlServer = new CSqlServer<ESecurityDefinition>(this._cS6GApp, this._ePriceConfig.ConnectionMssql);
-           
+
             try
             {
-                
-                EDalResult result;
-
-                var tasks = scripts.Select(async script =>
+                int successCount = 0;
+                foreach (var script in scripts)
                 {
                     try
                     {
-                        await sqlServer.ExecuteAsync(script);
+                        int rowsAffected = await sqlServer.ExecuteAsync(script);
+                        if (rowsAffected > 0) successCount++;
                     }
                     catch (Exception ex)
                     {
                         this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+                        return new EDalResult()
+                        {
+                            Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL,
+                            Message = ex.Message,
+                            Data = null
+                        };
                     }
-                });
-                await Task.WhenAll(tasks);
-                //var batches = scripts
-                //.Select((script, index) => new { script, index })
-                //.GroupBy(x => x.index / 50)
-                //.Select(g => g.Select(x => x.script));
-                //foreach (var batch in batches)
-                //{
-                //    var tasks = batch.Select(script => ExecuteScript(script));
-                //    await Task.WhenAll(tasks);
-                //}
-                //int affectedRowCount = await sqlServer.ExecuteAsync(scripts);
+                }
 
-                //var batches = scripts
-                //.Select((script, index) => new { script, index })
-                //.GroupBy(x => x.index / 50) // Chia thành batch 50 SP
-                //.Select(g => g.Select(x => x.script).ToList());
+                var result = new EDalResult()
+                {
+                    Code = EDalResult.__CODE_SUCCESS,
+                    Message = $"{successCount}/{scripts.Count} scripts executed successfully.",
+                    Data = successCount
+                };
 
-                //           foreach (var batch in batches)
-                //           {
-                //               using (var transactionScope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
-                //               {
-                //                   foreach (var script in batch)
-                //                   {
-                //                       await sqlServer.ExecuteAsync(script); // Thực thi từng SP trong transaction
-                //                   }
-                //                   transactionScope.Complete(); // Commit tất cả nếu thành công
-                //               }
-                //           }
-
-                result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
                 //Console.WriteLine("SQL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
                 return result;
             }
             catch (Exception ex)
             {
-                // log error + buffer data
                 this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
-                // error => return null
-                return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+                return new EDalResult()
+                {
+                    Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL,
+                    Message = ex.Message,
+                    Data = null
+                };
             }
         }
+        //public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
+        //{
+        //    Stopwatch m_SW = Stopwatch.StartNew();
+        //    TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
+        //    ISqlServer<ESecurityDefinition> sqlServer = new CSqlServer<ESecurityDefinition>(this._cS6GApp, this._ePriceConfig.ConnectionMssql);
+
+        //    try
+        //    {
+
+        //        EDalResult result;
+
+        //        var tasks = scripts.Select(async script =>
+        //        {
+        //            try
+        //            {
+        //                await sqlServer.ExecuteAsync(script);
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+        //            }
+        //        });
+        //        await Task.WhenAll(tasks);
+
+        //        result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
+        //        Console.WriteLine("SQL_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+        //        return result;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        // log error + buffer data
+        //        this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+        //        // error => return null
+        //        return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+        //    }
+        //}
         /// <summary>
         /// 2020-07-24 10:55:58 ngocta2
         /// 4.1 Security Definition
