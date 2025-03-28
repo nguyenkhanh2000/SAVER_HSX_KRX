@@ -15,5 +15,6 @@ namespace BaseOracleLib.Interfaces
 		string ParametersToStringWithoutName(OracleParameter[] parameters);
 		string ToOracleDateTimeString(object sendingTime);
 		Task<int> ExecuteAsync(string sql);
-	}
+        Task<int> ExecuteAsync(OracleConnection connection,string sql);
+    }
 }

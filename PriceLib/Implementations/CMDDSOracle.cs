@@ -1,10 +1,12 @@
 ﻿using BaseOracleLib.Implementations;
 using BaseOracleLib.Interfaces;
+using BaseOracleLib.Library;
 using CommonLib.Interfaces;
 using MDDSCore.Messages;
 using Oracle.ManagedDataAccess.Client;
 using PriceLib.Interfaces;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
@@ -73,77 +75,137 @@ namespace PriceLib.Implementations
 				return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
 			}
 		}
-		public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
-		{
-			Stopwatch m_SW = Stopwatch.StartNew();
-			TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
-			IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
-			try
-			{
-				int successCount = 0;
-				foreach (var script in scripts)
-				{
-					try
-					{
-						int rowsAffected = await oracle.ExecuteAsync(script);
-						if (rowsAffected > 0) successCount++;
-					}
-					catch (Exception ex)
-					{
-						this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
-						return new EDalResult()
-						{
-							Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL,
-							Message = ex.Message,
-							Data = null
-						};
-					}
-				}
-				var result = new EDalResult()
-				{
-					Code = EDalResult.__CODE_SUCCESS,
-					Message = $"{successCount}/{scripts.Count} scripts executed successfully.",
-					Data = successCount
-				};
-
-				//Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
-				return result;
-			}
-			catch (Exception ex)
-			{
-				this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
-				return new EDalResult()
-				{
-					Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL,
-					Message = ex.Message,
-					Data = null
-				};
-			}
-		}
-
 		//public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
 		//{
 		//	Stopwatch m_SW = Stopwatch.StartNew();
 		//	TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
 		//	IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
-		//	EDalResult result;
 		//	try
 		//	{
-		//		var tasks = scripts.Select(script => oracle.ExecuteAsync(script));
-		//		await Task.WhenAll(tasks);
+		//		int successCount = 0;
+		//		foreach (var script in scripts)
+		//		{
+		//			try
+		//			{
+		//				int rowsAffected = await oracle.ExecuteAsync(script);
+		//				if (rowsAffected > 0) successCount++;
+		//			}
+		//			catch (Exception ex)
+		//			{
+		//				this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+		//				return new EDalResult()
+		//				{
+		//					Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL,
+		//					Message = ex.Message,
+		//					Data = null
+		//				};
+		//			}
+		//		}
+		//		var result = new EDalResult()
+		//		{
+		//			Code = EDalResult.__CODE_SUCCESS,
+		//			Message = $"{successCount}/{scripts.Count} scripts executed successfully.",
+		//			Data = successCount
+		//		};
 
-		//		result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
-		//		Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+		//		//Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
 		//		return result;
 		//	}
 		//	catch (Exception ex)
 		//	{
-		//		// log error + buffer data
 		//		this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
-		//		// error => return null
-		//		return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+		//		return new EDalResult()
+		//		{
+		//			Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL,
+		//			Message = ex.Message,
+		//			Data = null
+		//		};
 		//	}
 		//}
+
+		//     public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
+		//     {
+		//         Stopwatch m_SW = Stopwatch.StartNew();
+		//         TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
+		//         IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
+		//         EDalResult result;
+
+		//         int maxDegreeOfParallelism = 10; // Số transaction chạy song song tối đa
+		//         await Parallel.ForEachAsync(scripts, new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
+		//         async (script, token) =>
+		//         {
+		//             try
+		//             {
+		//                 await oracle.ExecuteAsync(script);
+		//             }
+		//             catch (Exception ex)
+		//             {
+		//                 this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+		//             }
+		//         });
+		//Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+		//         return new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
+		//     }
+
+
+		//public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
+		//{
+		//    Stopwatch m_SW = Stopwatch.StartNew();
+		//    TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} Executing batch scripts", true);
+		//    IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
+		//    // Dùng Connection Pooling để giảm số lượng kết nối mở liên tục
+		//    await using OracleConnection connection = await new OracleDbManager(_ePriceConfig.ConnectionOracle).GetConnectionAsync();
+
+		//    int maxDegreeOfParallelism = 10; // Giới hạn số transaction chạy song song
+		//    ConcurrentBag<Exception> exceptions = new ConcurrentBag<Exception>();
+
+		//    await Parallel.ForEachAsync(scripts, new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
+		//    async (script, token) =>
+		//    {
+		//        try
+		//        {
+		//            await oracle.ExecuteAsync(connection, script);
+		//        }
+		//        catch (Exception ex)
+		//        {
+		//            exceptions.Add(ex);
+		//            this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+		//        }
+		//    });
+
+		//    Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+
+		//    if (exceptions.Count > 0)
+		//    {
+		//        return new EDalResult() { Code = EDalResult.__CODE_ERROR, Message = "Error executing scripts", Data = exceptions.Count };
+		//    }
+
+		//    return new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = scripts.Count };
+		//}
+
+		public async Task<EDalResult> ExecuteScriptOracle(List<string> scripts)
+		{
+			Stopwatch m_SW = Stopwatch.StartNew();
+			TExecutionContext ec = this._cS6GApp.DebugLogger.WriteBufferBegin($"{EGlobalConfig.__STRING_BEFORE} script={scripts}", true);
+			IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
+			EDalResult result;
+			try
+			{
+				var tasks = scripts.Select(script => oracle.ExecuteAsync(script));
+				await Task.WhenAll(tasks);
+
+				result = new EDalResult() { Code = EDalResult.__CODE_SUCCESS, Message = EDalResult.__STRING_SUCCESS, Data = 0 };
+				Console.WriteLine("ORACLE_TIMER_" + m_SW.ElapsedMilliseconds.ToString());
+				return result;
+			}
+			catch (Exception ex)
+			{
+				// log error + buffer data
+				this._cS6GApp.ErrorLogger.LogErrorContext(ex, ec);
+				// error => return null
+				return new EDalResult() { Code = EGlobalConfig.__CODE_ERROR_IN_LAYER_DAL, Message = ex.Message, Data = null };
+			}
+		}
 
 		public async Task<EDalResult> ExecuteScriptPrice(List<string> scripts, List<string> scripts_msgX, List<string> scripts_msgW)
         {

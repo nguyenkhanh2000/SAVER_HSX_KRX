@@ -22,6 +22,10 @@ namespace BaseOracleLib.Library
         }
         public async Task<OracleConnection> GetConnectionAsync()
         {
+            //OracleConnection connection = new OracleConnection(_connectionString);
+            //await connection.OpenAsync();
+            //return connection;
+
             await _connectionLock.WaitAsync();
             try
             {
@@ -37,56 +41,26 @@ namespace BaseOracleLib.Library
             {
                 _connectionLock.Release();
             }
+
         }
-        //public async Task<OracleConnection> GetConnectionAsync()
-        //{
-        //    //await _connectionLock.WaitAsync();
-        //    try
-        //    {
-        //        //if (_connection == null)
-        //        //{
-        //        //    _connection = new OracleConnection(_connectionString);
-        //        //}
-
-        //        //if (_connection.State == ConnectionState.Closed || _connection.State == ConnectionState.Broken)
-        //        //{
-        //        //    await _connection.OpenAsync();
-        //        //}
-        //        //if (_connection == null || _connection.State == ConnectionState.Closed || _connection.State == ConnectionState.Broken)
-        //        //{
-        //        //    _connection = new OracleConnection(_connectionString);
-        //        //    await _connection.OpenAsync();
-        //        //}
-        //        //return _connection;
-        //        OracleConnection connection = new OracleConnection(_connectionString);
-
-        //        if (connection.State != ConnectionState.Open)
-        //        {
-        //            await connection.OpenAsync();
-        //        }
-
-        //        return connection;
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        throw ex;
-        //    }
-        //    //finally 
-        //    //{
-        //    //    _connectionLock.Release();
-        //    //}  
-        //}
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
-
-            if (_connection != null)
+            if (!_disposed)
             {
-                _connection.Dispose();
-                _connection = null;
+                _disposed = true;
             }
-            _connectionLock.Dispose();
         }
+        //public void Dispose()
+        //{
+        //    if (_disposed) return;
+        //    _disposed = true;
+
+        //    if (_connection != null)
+        //    {
+        //        _connection.Dispose();
+        //        _connection = null;
+        //    }
+        //    _connectionLock.Dispose();
+        //}
     }  
 }

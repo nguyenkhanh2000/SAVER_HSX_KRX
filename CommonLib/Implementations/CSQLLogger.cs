@@ -82,7 +82,7 @@ Data    = {4}";
                 string logFilePath = Path.Combine(logDirectory, formattedFileName);
 
                 // Ghi dữ liệu vào file log
-                File.AppendAllText(logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {data}{Environment.NewLine}");
+                File.AppendAllText(logFilePath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {data}{Environment.NewLine}");
             }
             catch (Exception ex)
             {

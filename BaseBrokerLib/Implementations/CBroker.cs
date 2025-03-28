@@ -255,257 +255,235 @@ namespace BaseBrokerLib.Implementations
                     autoDelete: false,
                     arguments: null);
 
-                //this._channel.ExchangeDeclare(
-                //	this._eBrokerConfig.ExchangeName, 
-                //	ExchangeType.Direct,
-                //	Convert.ToBoolean(this._eBrokerConfig.Durable));
 
-                // From	"ExchangeMDDSHSX" voi Routing key "RoutingMDDSHSX" thi send vao queue "QueueMDDSHSX"
-                this._channel.QueueBind(
-                    this._brokerConfig.QueueName,
-                    this._brokerConfig.ExchangeName,
-                    this._brokerConfig.RoutingKey
-                    );
-                //Queue dành cho INDEX HNX
-                //this._channelIndexHNX = this._connection.CreateModel();
-                //this._channelIndexHNX.ExchangeDeclare(
-                //    this._brokeroutIndexHNXConfig.ExchangeName,
+
+                //// From	"ExchangeMDDSHSX" voi Routing key "RoutingMDDSHSX" thi send vao queue "QueueMDDSHSX"
+                //this._channel.QueueBind(
+                //    this._brokerConfig.QueueName,
+                //    this._brokerConfig.ExchangeName,
+                //    this._brokerConfig.RoutingKey
+                //    );
+
+                ////Queue dành cho Index
+                //this._channelIndex = this._connection.CreateModel();
+                //this._channelIndex.ExchangeDeclare(
+                //    this._brokeroutIndexConfig.ExchangeName,
                 //    ExchangeType.Direct,
-                //    Convert.ToBoolean(this._brokeroutIndexHNXConfig.Durable));
+                //    Convert.ToBoolean(this._brokeroutIndexConfig.Durable));
 
-                //this._channelIndexHNX.QueueDeclare(
-                //    queue: this._brokeroutIndexHNXConfig.QueueName,
-                //    durable: Convert.ToBoolean(this._brokeroutIndexHNXConfig.Durable), // false, // 
+                //this._channelIndex.QueueDeclare(
+                //    queue: this._brokeroutIndexConfig.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutIndexConfig.Durable), // false, // 
                 //    exclusive: false,
                 //    autoDelete: false,
                 //    arguments: null);
 
-                //this._channelIndexHNX.QueueBind(
-                //    this._brokeroutIndexHNXConfig.QueueName,
-                //    this._brokeroutIndexHNXConfig.ExchangeName,
-                //    this._brokeroutIndexHNXConfig.RoutingKey
-                    //);
+                //this._channelIndex.QueueBind(
+                //    this._brokeroutIndexConfig.QueueName,
+                //    this._brokeroutIndexConfig.ExchangeName,
+                //    this._brokeroutIndexConfig.RoutingKey
+                //    );
 
-                //Queue dành cho Index
-                this._channelIndex = this._connection.CreateModel();
-                this._channelIndex.ExchangeDeclare(
-                    this._brokeroutIndexConfig.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutIndexConfig.Durable));
+                ////Queue giành cho ET
+                //this._channelET = this._connection.CreateModel();
+                //this._channelET.ExchangeDeclare(
+                //    this._brokeroutETConfig.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutETConfig.Durable));
 
-                this._channelIndex.QueueDeclare(
-                    queue: this._brokeroutIndexConfig.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutIndexConfig.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelET.QueueDeclare(
+                //    queue: this._brokeroutETConfig.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutETConfig.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelIndex.QueueBind(
-                    this._brokeroutIndexConfig.QueueName,
-                    this._brokeroutIndexConfig.ExchangeName,
-                    this._brokeroutIndexConfig.RoutingKey
-                    );
+                //this._channelET.QueueBind(
+                //    this._brokeroutETConfig.QueueName,
+                //    this._brokeroutETConfig.ExchangeName,
+                //    this._brokeroutETConfig.RoutingKey
+                //    );
 
-                //Queue giành cho ET
-                this._channelET = this._connection.CreateModel();
-                this._channelET.ExchangeDeclare(
-                    this._brokeroutETConfig.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutETConfig.Durable));
+                //// LinhNH 
+                ////Queue giành cho g4
+                //this._channelG4 = this._connection.CreateModel();
+                //this._channelG4.ExchangeDeclare(
+                //    this._brokeroutG4Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutG4Config.Durable));
 
-                this._channelET.QueueDeclare(
-                    queue: this._brokeroutETConfig.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutETConfig.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelG4.QueueDeclare(
+                //    queue: this._brokeroutG4Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutG4Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelET.QueueBind(
-                    this._brokeroutETConfig.QueueName,
-                    this._brokeroutETConfig.ExchangeName,
-                    this._brokeroutETConfig.RoutingKey
-                    );
+                //this._channelG4.QueueBind(
+                //    this._brokeroutG4Config.QueueName,
+                //    this._brokeroutG4Config.ExchangeName,
+                //    this._brokeroutG4Config.RoutingKey
+                //    );
 
-                // LinhNH 
-                //Queue giành cho g4
-                this._channelG4 = this._connection.CreateModel();
-                this._channelG4.ExchangeDeclare(
-                    this._brokeroutG4Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutG4Config.Durable));
+                ////Queue giành cho G7
+                //this._channelG7 = this._connection.CreateModel();
+                //this._channelG7.ExchangeDeclare(
+                //    this._brokeroutG7Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutG7Config.Durable));
 
-                this._channelG4.QueueDeclare(
-                    queue: this._brokeroutG4Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutG4Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelG7.QueueDeclare(
+                //    queue: this._brokeroutG7Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutG7Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelG4.QueueBind(
-                    this._brokeroutG4Config.QueueName,
-                    this._brokeroutG4Config.ExchangeName,
-                    this._brokeroutG4Config.RoutingKey
-                    );
+                //this._channelG7.QueueBind(
+                //    this._brokeroutG7Config.QueueName,
+                //    this._brokeroutG7Config.ExchangeName,
+                //    this._brokeroutG7Config.RoutingKey
+                //    );
 
-                //Queue giành cho G7
-                this._channelG7 = this._connection.CreateModel();
-                this._channelG7.ExchangeDeclare(
-                    this._brokeroutG7Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutG7Config.Durable));
+                ////Queue giành cho G8
+                //this._channelG8 = this._connection.CreateModel();
+                //this._channelG8.ExchangeDeclare(
+                //    this._brokeroutG8Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutG8Config.Durable));
 
-                this._channelG7.QueueDeclare(
-                    queue: this._brokeroutG7Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutG7Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelG8.QueueDeclare(
+                //    queue: this._brokeroutG8Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutG8Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelG7.QueueBind(
-                    this._brokeroutG7Config.QueueName,
-                    this._brokeroutG7Config.ExchangeName,
-                    this._brokeroutG7Config.RoutingKey
-                    );
+                //this._channelG8.QueueBind(
+                //    this._brokeroutG8Config.QueueName,
+                //    this._brokeroutG8Config.ExchangeName,
+                //    this._brokeroutG8Config.RoutingKey
+                //    );
 
-                //Queue giành cho G8
-                this._channelG8 = this._connection.CreateModel();
-                this._channelG8.ExchangeDeclare(
-                    this._brokeroutG8Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutG8Config.Durable));
+                ////Queue giành cho T1
+                //this._channelT1 = this._connection.CreateModel();
+                //this._channelT1.ExchangeDeclare(
+                //    this._brokeroutT1Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutT1Config.Durable));
 
-                this._channelG8.QueueDeclare(
-                    queue: this._brokeroutG8Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutG8Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelT1.QueueDeclare(
+                //    queue: this._brokeroutT1Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutT1Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelG8.QueueBind(
-                    this._brokeroutG8Config.QueueName,
-                    this._brokeroutG8Config.ExchangeName,
-                    this._brokeroutG8Config.RoutingKey
-                    );
+                //this._channelT1.QueueBind(
+                //    this._brokeroutT1Config.QueueName,
+                //    this._brokeroutT1Config.ExchangeName,
+                //    this._brokeroutT1Config.RoutingKey
+                //    );
 
-                //Queue giành cho T1
-                this._channelT1 = this._connection.CreateModel();
-                this._channelT1.ExchangeDeclare(
-                    this._brokeroutT1Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutT1Config.Durable));
+                ////Queue giành cho T2
+                //this._channelT2 = this._connection.CreateModel();
+                //this._channelT2.ExchangeDeclare(
+                //    this._brokeroutT2Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutT2Config.Durable));
 
-                this._channelT1.QueueDeclare(
-                    queue: this._brokeroutT1Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutT1Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelT2.QueueDeclare(
+                //    queue: this._brokeroutT2Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutT2Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelT1.QueueBind(
-                    this._brokeroutT1Config.QueueName,
-                    this._brokeroutT1Config.ExchangeName,
-                    this._brokeroutT1Config.RoutingKey
-                    );
+                //this._channelT2.QueueBind(
+                //    this._brokeroutT2Config.QueueName,
+                //    this._brokeroutT2Config.ExchangeName,
+                //    this._brokeroutT2Config.RoutingKey
+                //    );
 
-                //Queue giành cho T2
-                this._channelT2 = this._connection.CreateModel();
-                this._channelT2.ExchangeDeclare(
-                    this._brokeroutT2Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutT2Config.Durable));
+                ////Queue giành cho T3
+                //this._channelT3 = this._connection.CreateModel();
+                //this._channelT3.ExchangeDeclare(
+                //    this._brokeroutT3Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutT3Config.Durable));
 
-                this._channelT2.QueueDeclare(
-                    queue: this._brokeroutT2Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutT2Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelT3.QueueDeclare(
+                //    queue: this._brokeroutT3Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutT3Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelT2.QueueBind(
-                    this._brokeroutT2Config.QueueName,
-                    this._brokeroutT2Config.ExchangeName,
-                    this._brokeroutT2Config.RoutingKey
-                    );
+                //this._channelT3.QueueBind(
+                //    this._brokeroutT3Config.QueueName,
+                //    this._brokeroutT3Config.ExchangeName,
+                //    this._brokeroutT3Config.RoutingKey
+                //    );
 
-                //Queue giành cho T3
-                this._channelT3 = this._connection.CreateModel();
-                this._channelT3.ExchangeDeclare(
-                    this._brokeroutT3Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutT3Config.Durable));
+                ////Queue giành cho T4
+                //this._channelT4 = this._connection.CreateModel();
+                //this._channelT4.ExchangeDeclare(
+                //    this._brokeroutT4Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutT4Config.Durable));
 
-                this._channelT3.QueueDeclare(
-                    queue: this._brokeroutT3Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutT3Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelT4.QueueDeclare(
+                //    queue: this._brokeroutT4Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutT4Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelT3.QueueBind(
-                    this._brokeroutT3Config.QueueName,
-                    this._brokeroutT3Config.ExchangeName,
-                    this._brokeroutT3Config.RoutingKey
-                    );
+                //this._channelT4.QueueBind(
+                //    this._brokeroutT4Config.QueueName,
+                //    this._brokeroutT4Config.ExchangeName,
+                //    this._brokeroutT4Config.RoutingKey
+                //    );
 
-                //Queue giành cho T4
-                this._channelT4 = this._connection.CreateModel();
-                this._channelT4.ExchangeDeclare(
-                    this._brokeroutT4Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutT4Config.Durable));
+                ////Queue giành cho T6
+                //this._channelT6 = this._connection.CreateModel();
+                //this._channelT6.ExchangeDeclare(
+                //    this._brokeroutT6Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutT6Config.Durable));
 
-                this._channelT4.QueueDeclare(
-                    queue: this._brokeroutT4Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutT4Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelT6.QueueDeclare(
+                //    queue: this._brokeroutT6Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutT6Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelT4.QueueBind(
-                    this._brokeroutT4Config.QueueName,
-                    this._brokeroutT4Config.ExchangeName,
-                    this._brokeroutT4Config.RoutingKey
-                    );
+                //this._channelT6.QueueBind(
+                //    this._brokeroutT6Config.QueueName,
+                //    this._brokeroutT6Config.ExchangeName,
+                //    this._brokeroutT6Config.RoutingKey
+                //    );
 
-                //Queue giành cho T6
-                this._channelT6 = this._connection.CreateModel();
-                this._channelT6.ExchangeDeclare(
-                    this._brokeroutT6Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutT6Config.Durable));
+                ////Queue giành cho T7
+                //this._channelT7 = this._connection.CreateModel();
+                //this._channelT7.ExchangeDeclare(
+                //    this._brokeroutT7Config.ExchangeName,
+                //    ExchangeType.Direct,
+                //    Convert.ToBoolean(this._brokeroutT7Config.Durable));
 
-                this._channelT6.QueueDeclare(
-                    queue: this._brokeroutT6Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutT6Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
+                //this._channelT7.QueueDeclare(
+                //    queue: this._brokeroutT7Config.QueueName,
+                //    durable: Convert.ToBoolean(this._brokeroutT7Config.Durable), // false, // 
+                //    exclusive: false,
+                //    autoDelete: false,
+                //    arguments: null);
 
-                this._channelT6.QueueBind(
-                    this._brokeroutT6Config.QueueName,
-                    this._brokeroutT6Config.ExchangeName,
-                    this._brokeroutT6Config.RoutingKey
-                    );
-
-                //Queue giành cho T7
-                this._channelT7 = this._connection.CreateModel();
-                this._channelT7.ExchangeDeclare(
-                    this._brokeroutT7Config.ExchangeName,
-                    ExchangeType.Direct,
-                    Convert.ToBoolean(this._brokeroutT7Config.Durable));
-
-                this._channelT7.QueueDeclare(
-                    queue: this._brokeroutT7Config.QueueName,
-                    durable: Convert.ToBoolean(this._brokeroutT7Config.Durable), // false, // 
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null);
-
-                this._channelT7.QueueBind(
-                    this._brokeroutT7Config.QueueName,
-                    this._brokeroutT7Config.ExchangeName,
-                    this._brokeroutT7Config.RoutingKey
-                    );
+                //this._channelT7.QueueBind(
+                //    this._brokeroutT7Config.QueueName,
+                //    this._brokeroutT7Config.ExchangeName,
+                //    this._brokeroutT7Config.RoutingKey
+                //    );
                 return true;
             }
             catch (Exception ex)

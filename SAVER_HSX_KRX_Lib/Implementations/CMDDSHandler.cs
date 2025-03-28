@@ -148,8 +148,6 @@ namespace BaseSaverLib.Implementations
                 var stopWatch = Stopwatch.StartNew();
                 while (/*stopWatch.ElapsedMilliseconds < 500 &&*/ this.m_queueRedis.TryDequeue(out var obj_msgX))
                 {
-                    //var CW = Stopwatch.StartNew();
-
                     if (obj_msgX != null)
                     {
                         await ProcessDataRedis(obj_msgX);
@@ -824,8 +822,10 @@ namespace BaseSaverLib.Implementations
 
                     if (this._redisNewApp != null)
                     {
-                        _redisNewApp.SortedSetAddAsync(Z_KEY_VAL, strJsonC, Z_SCORE);
-                        _redisNewApp.SortedSetAddAsync(Z_KEY_VOL, strJsonC, Z_SCORE);
+                        await Task.WhenAll(
+                            _redisNewApp.SortedSetAddAsync2(Z_KEY_VOL, strJsonC, Z_SCORE),
+                            _redisNewApp.SortedSetAddAsync2(Z_KEY_VAL, strJsonC, Z_SCORE)
+                        );
                     }
                 }
             }

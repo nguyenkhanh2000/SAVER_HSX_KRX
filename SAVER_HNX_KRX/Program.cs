@@ -98,7 +98,8 @@ namespace SAVER_HNX_KRX
 
                 _brokerConfig = new EBrokerConfig();
                 _app.Configuration.GetSection(EBrokerConfig.__SECTION_BROKER_INPUT_CONFIG).Bind(_brokerConfig);
-                _broker = new CBroker(_app, BrokerConfigList.Input);
+                _broker = new CBroker(_app, _brokerConfig);
+                //_broker = new CBroker(_app, BrokerConfigList.Input);
 
                 _priceConfig = new EPriceConfig();
                 _app.Configuration.GetSection(EPriceConfig.__SECTION_PRICECONFIG).Bind(_priceConfig);

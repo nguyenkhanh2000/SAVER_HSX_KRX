@@ -56,6 +56,20 @@ namespace CommonLib.Implementations
                 this._app.ErrorLogger.LogError(ex);
             }
         }
+        public async Task SortedSetAddAsync2(string key, string value, double score)
+        {
+            try
+            {
+                if (RC != null)
+                {
+                    await RC.SortedSetAddAsync(key, value, score);
+                }
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+            }
+        }
         public bool SetCache(string strKey, string strValue, int intDuration)
         {
             try

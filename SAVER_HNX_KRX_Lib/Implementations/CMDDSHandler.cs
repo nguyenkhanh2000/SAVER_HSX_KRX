@@ -145,8 +145,6 @@ namespace BaseSaverLib.Implementations
                 var stopWatch = Stopwatch.StartNew();
                 while (/*stopWatch.ElapsedMilliseconds < 500 &&*/ this.m_queueRedis.TryDequeue(out var obj_msgX))
                 {
-                    //var CW = Stopwatch.StartNew();
-
                     if (obj_msgX != null)
                     {
                         await ProcessDataRedis(obj_msgX);
@@ -162,6 +160,7 @@ namespace BaseSaverLib.Implementations
                 CMonitor.MONITOR_APP.HNX_Saver5G,
                 intTotalRow,
                 stopWatch.ElapsedMilliseconds);
+
             }
             catch (Exception ex)
             {
@@ -282,6 +281,7 @@ namespace BaseSaverLib.Implementations
 
                     //Ghi log count
                     this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
+                    //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString()}");
                 }
                 await this._repository.ExecBulkScript_Oracle(ScriptOracle);
 
@@ -291,6 +291,14 @@ namespace BaseSaverLib.Implementations
                 CMonitor.MONITOR_APP.HNX_Saver5G_DB,
                 totalcount,
                 SW_RD.ElapsedMilliseconds);
+
+
+                //this._monitor.SendStatusToMonitor(
+                //this._app.Common.GetLocalDateTime(),
+                //this._app.Common.GetLocalIp(),
+                //CMonitor.MONITOR_APP.HSX_Feeder5G_Q,
+                //totalcount,
+                //SW_RD.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
@@ -798,10 +806,10 @@ namespace BaseSaverLib.Implementations
                         }
                     }
                 }
-                if(d_dic_stockno.ContainsKey(eP.Symbol))
+                if (d_dic_stockno.ContainsKey(eP.Symbol))
                 {
                     bool checkDI = false;
-                    if(eP.MarketID == "DVX" || eP.MarketID == "dvx")
+                    if (eP.MarketID == "DVX" || eP.MarketID == "dvx")
                     {
                         checkDI = true;
                     }
@@ -829,13 +837,14 @@ namespace BaseSaverLib.Implementations
                     string Z_KEY_VOL = TEMPLATE_REDIS_KEY_LE_TKTT_VOL.Replace("(Symbol)", Symbol);
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
                     //string Z_VALUE = strJsonC;
-                    if(this._redisNewApp != null)
-                    {                        
-                        _redisNewApp.SortedSetAddAsync(Z_KEY_VOL, strResult, Z_SCORE);
-
-                        _redisNewApp.SortedSetAddAsync(Z_KEY_VAL, strJson_Base, Z_SCORE);
+                    if (this._redisNewApp != null)
+                    {
+                        await Task.WhenAll(
+                            _redisNewApp.SortedSetAddAsync2(Z_KEY_VOL, strResult, Z_SCORE),
+                            _redisNewApp.SortedSetAddAsync2(Z_KEY_VAL, strJson_Base, Z_SCORE)
+                        );
                     }
-                    
+
                 }
             }
             catch (Exception ex)
