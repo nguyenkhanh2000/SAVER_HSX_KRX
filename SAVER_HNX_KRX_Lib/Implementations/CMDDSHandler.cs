@@ -24,6 +24,10 @@ using static App.Metrics.Formatters.Json.BucketTimerMetric;
 using StockCore.TAChart.Entities;
 using System.Timers;
 using System.Collections.Concurrent;
+using SAVER_HNX_KRX_Lib.Models;
+using RabbitMQ.Client;
+using static StockCore.Stock5G.HSX.Struct.CGlobal;
+using static SystemCore.Entities.EGlobalConfig;
 
 namespace BaseSaverLib.Implementations
 {
@@ -49,10 +53,15 @@ namespace BaseSaverLib.Implementations
         private const string TEMPLATE_REDIS_KEY_LE_TKTT_VOL = "TKTT:VOL:(Symbol):0";
         private const string TEMPLATE_REDIS_KEY_LE_TKTT_VAL = "TKTT:VAL:(Symbol):0";
         private const string TEMPLATE_REDIS_KEY_LS = "LS:(Symbol)";
+        private const string TEMPLATE_REDIS_KEY_PT = "PT:SYMBOL:(Symbol)";
+        private const string TEMPLATE_REDIS_KEY_PT_ALL = "PT:ALL:(Exchange):KL";
+        private const string TEMPLATE_REDIS_KEY_PT_SIDE_B = "PT:ALL:(Exchange):BUY";
+        private const string TEMPLATE_REDIS_KEY_PT_SIDE_S = "PT:ALL:(Exchange):SELL";
 
         private const string TEMPLATE_JSONC_LE = "{\"MT\":\"(MT)\",\"MQ\":(MQ),\"MP\":(MP),\"TQ\":(TQ)}";
         private const string TEMPLATE_JSONC_LE_TKTT = "{\"MT\":\"(MT)\",\"MP\":(MP),\"TQ\":(TQ),\"TV\":(TV)}";
         private const string TEMPLATE_JSONC_LS = "{\"MT\":\"(MT)\",\"CN\":(CN),\"MP\":(MP),\"MQ\":(MQ),\"SIDE\":(SIDE)}";
+
 
         // lô lẻ hsx
         public const string TEMPLATE_JSONC_PO = "{\"T\":\"(T)\",\"S\":\"(S)\",\"BP1\":(BP1),\"BQ1\":(BQ1),\"BP2\":(BP2),\"BQ2\":(BQ2),\"BP3\":(BP3),\"BQ3\":(BQ3),\"SP1\":(SP1),\"SQ1\":(SQ1),\"SP2\":(SP2),\"SQ2\":(SQ2),\"SP3\":(SP3),\"SQ3\":(SQ3)}";    //
@@ -160,7 +169,6 @@ namespace BaseSaverLib.Implementations
                 CMonitor.MONITOR_APP.HNX_Saver5G,
                 intTotalRow,
                 stopWatch.ElapsedMilliseconds);
-
             }
             catch (Exception ex)
             {
@@ -202,21 +210,23 @@ namespace BaseSaverLib.Implementations
                         count++; // Tăng biến đếm lên 1
                     }
                 }
-                foreach (var (msgType, scripts) in mssqlScriptsByType)
+                if(count > 0)
                 {
-                    var mssqlBatchBuilder = new StringBuilder(sqlBeginTransaction);
-                    foreach (var script in scripts)
+                    foreach (var (msgType, scripts) in mssqlScriptsByType)
                     {
-                        mssqlBatchBuilder.Append(sqlExec).Append(script);
+                        var mssqlBatchBuilder = new StringBuilder(sqlBeginTransaction);
+                        foreach (var script in scripts)
+                        {
+                            mssqlBatchBuilder.Append(sqlExec).Append(script);
+                        }
+                        mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE).Append(sqlCommitTransaction);
+
+                        Scriptmssql.Add(mssqlBatchBuilder.ToString());
+                        //Ghi log count 
+                        this._app.SqlLogger.LogSciptSQL($"SQLServer1_{msgType}", $"{mssqlBatchBuilder.ToString().Length}");
                     }
-                    mssqlBatchBuilder.Append(EGlobalConfig.__STRING_RETURN_NEW_LINE).Append(sqlCommitTransaction);
-
-                    Scriptmssql.Add(mssqlBatchBuilder.ToString());
-                    //Ghi log count 
-                    this._app.SqlLogger.LogSciptSQL($"SQLServer_{msgType}", $"{mssqlBatchBuilder.ToString().Length}");
+                    await this._repository.ExecBulkScript_SqlServer(Scriptmssql);
                 }
-                await this._repository.ExecBulkScript_SqlServer(Scriptmssql);
-
                 this._monitor.SendStatusToMonitor(
                 this._app.Common.GetLocalDateTime(),
                 this._app.Common.GetLocalIp(),
@@ -268,23 +278,25 @@ namespace BaseSaverLib.Implementations
                         count++; // Tăng biến đếm lên 1
                     }
                 }
-                foreach (var (msgTypes, scripts) in oracleScriptsByType)
+                if(count > 0)
                 {
-                    var oracleBatchBuilder = new StringBuilder(oracleBeginBlock);
-                    foreach (var script in scripts)
+                    foreach (var (msgTypes, scripts) in oracleScriptsByType)
                     {
-                        oracleBatchBuilder.Append(oracleNewLineTab).Append(script);
+                        var oracleBatchBuilder = new StringBuilder(oracleBeginBlock);
+                        foreach (var script in scripts)
+                        {
+                            oracleBatchBuilder.Append(oracleNewLineTab).Append(script);
+                        }
+                        oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
+
+                        ScriptOracle.Add(oracleBatchBuilder.ToString());
+
+                        //Ghi log count
+                        this._app.SqlLogger.LogSciptSQL($"Oracle1_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
                     }
-                    oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
-
-                    ScriptOracle.Add(oracleBatchBuilder.ToString());
-
-                    //Ghi log count
-                    this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
-                    //this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString()}");
+                    await this._repository.ExecBulkScript_Oracle(ScriptOracle);
                 }
-                await this._repository.ExecBulkScript_Oracle(ScriptOracle);
-
+                
                 this._monitor.SendStatusToMonitor(
                 this._app.Common.GetLocalDateTime(),
                 this._app.Common.GetLocalIp(),
@@ -292,13 +304,6 @@ namespace BaseSaverLib.Implementations
                 totalcount,
                 SW_RD.ElapsedMilliseconds);
 
-
-                //this._monitor.SendStatusToMonitor(
-                //this._app.Common.GetLocalDateTime(),
-                //this._app.Common.GetLocalIp(),
-                //CMonitor.MONITOR_APP.HSX_Feeder5G_Q,
-                //totalcount,
-                //SW_RD.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
@@ -321,6 +326,10 @@ namespace BaseSaverLib.Implementations
                 {
                     // Giao dịch lô lẻ cho phần chi tiết giá
                     await UpdateRedisPO(eP);
+                }
+                else if ((eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && (eP.BoardID == "T1" || eP.BoardID == "T4" || eP.BoardID == "T2" || eP.BoardID == "T3" || eP.BoardID == "T6" || eP.BoardID == "R1") /*&& eP.Side != null*/)
+                {
+                    await Task.WhenAll(UpdateRedisPT_KL(eP), UpdateRedisPT_ForAll_Side(eP));
                 }
             }
             catch (Exception ex)
@@ -564,24 +573,11 @@ namespace BaseSaverLib.Implementations
                         break;
                     // 4.10 Price
                     case EPrice.__MSG_TYPE:
-                        var stopWatch = Stopwatch.StartNew();
                         EPrice eP = this._app.HandCode.Fix_Fix2EPrice(rawData, true,1,2,1);
                         //Cho vào queue<obj> -Update key giá khớp lệnh-- hiển thị cho phần chi tiết giá 
                         if (eP != null)
                             m_queueRedis.Enqueue(eP);
-                        //if ((eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && eP.BoardID == "G1" && eP.Side == null)
-                        //{
-                        //    //await UpdateRedisLE(eP);
-                        //    await Task.WhenAll(UpdateRedisLE_TKTT2Redis(eP), UpdateRedisLE(eP), UpdateRedisLS(eP));
-                        //    _state.TotalCountArrMsg++;
-                        //}
-                        //else if ((eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && eP.BoardID == "G4" && eP.Side != null)
-                        //{
-                        //    // Giao dịch lô lẻ cho phần chi tiết giá
-                        //    await UpdateRedisPO(eP);
-                        //    _state.TotalCountArrMsg++;
-                        //}
-                        //_state.StopwatchRD += stopWatch.ElapsedMilliseconds;
+
                         eBulkScript = await _repository.GetScriptPriceAll(eP);
                         break;
                     // 4.11 Price Recovery
@@ -712,6 +708,173 @@ namespace BaseSaverLib.Implementations
                 return null;
             }
         }
+        /// <summary>
+        /// Lưu key Redis cho:
+        /// - Phần chi tiết mã - GD thỏa thuận
+        /// - Màn hình GD thỏa thuận - phần Khớp lệnh
+        /// </summary>
+        /// <param name="eP"></param>
+        /// <returns></returns>
+        public async Task UpdateRedisPT_KL(EPrice eP)
+        {
+            try
+            {
+                string Symbol = "";
+                string value = "";
+                if (d_dic_stockno.Count < 1)
+                {
+                    value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HNX);
+
+                    if (!string.IsNullOrEmpty(value))
+                    {
+
+                        Dictionary<string, string> storedDictionary = JsonConvert.DeserializeObject<Dictionary<string, string>>(value);
+
+                        foreach (var kew in storedDictionary)
+                        {
+                            if (d_dic_stockno.ContainsKey(kew.Key))
+                            {
+                                d_dic_stockno[kew.Key] = kew.Value;
+                            }
+                            else
+                            {
+                                d_dic_stockno.Add(kew.Key, kew.Value);
+                            }
+                        }
+                    }
+                }
+                if (d_dic_stockno.ContainsKey(eP.Symbol))
+                {
+                    Symbol = d_dic_stockno[eP.Symbol];
+                    string time = (eP.SendingTime.Split(' ')[1]).Split('.')[0];
+
+                    PT_Model pt_model = new PT_Model
+                    {
+                        MT = time,
+                        MP = ProcessPrice(eP.MatchPrice),
+                        MQ = eP.MatchQuantity,
+                        TQ = eP.TotalVolumeTraded,
+                        TV = eP.GrossTradeAmt
+                    };
+                    PT_ForAll pt_all = new PT_ForAll
+                    {
+                        Symbol = Symbol,
+                        Data = pt_model
+                    };
+                    string strJson_Symbol = JsonConvert.SerializeObject(pt_model);
+                    string strJson_All = JsonConvert.SerializeObject(pt_all);
+
+                    string Z_KEY_SYMBOL = TEMPLATE_REDIS_KEY_PT.Replace("(Symbol)", Symbol);
+                    string exchange = eP.MarketID switch
+                    {
+                        "STX" => "HNX",
+                        "UPX" => "UPCOM",
+                        "DVX" => "FU",
+                        _ => ""
+                    };
+                    string Z_KEY_ALL = TEMPLATE_REDIS_KEY_PT_ALL.Replace("(Exchange)", exchange);
+
+                    long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
+
+                    await Task.WhenAll(
+                        this._redis.SortedSetAddAsync(Z_KEY_SYMBOL, strJson_Symbol, Z_SCORE),
+                        this._redis.SortedSetAddAsync(Z_KEY_ALL, strJson_All, Z_SCORE)
+                        );
+                }
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+            }
+        }
+        /// <summary>
+        /// Lưu key Redis cho phần chi tiết mã - Giao dịch thỏa thuận
+        /// </summary>
+        /// <param name="eP"></param>
+        /// <returns></returns>
+        public async Task UpdateRedisPT_ForAll_Side(EPrice eP)
+        {
+            try
+            {
+                string Symbol = "";
+                string value = "";
+                if (d_dic_stockno.Count < 1)
+                {
+                    value = _redis.RC_1.StringGet(TEMPLATE_REDIS_KEY_STOCK_NO_HNX);
+
+                    if (!string.IsNullOrEmpty(value))
+                    {
+
+                        Dictionary<string, string> storedDictionary = JsonConvert.DeserializeObject<Dictionary<string, string>>(value);
+
+                        foreach (var kew in storedDictionary)
+                        {
+                            if (d_dic_stockno.ContainsKey(kew.Key))
+                            {
+                                d_dic_stockno[kew.Key] = kew.Value;
+                            }
+                            else
+                            {
+                                d_dic_stockno.Add(kew.Key, kew.Value);
+                            }
+                        }
+                    }
+                }
+                if (d_dic_stockno.ContainsKey(eP.Symbol))
+                {
+                    Symbol = d_dic_stockno[eP.Symbol];
+
+                    PT_Side_Model sideB = new PT_Side_Model
+                    {
+                        Symbol = Symbol,
+                        Data = new Side_Data
+                        {
+                            MP = eP.BuyPrice1,
+                            MQ = eP.BuyQuantity1
+                        }
+                    };
+
+                    PT_Side_Model sideS = new PT_Side_Model
+                    {
+                        Symbol = Symbol,
+                        Data = new Side_Data
+                        {
+                            MP = eP.SellPrice1,
+                            MQ = eP.SellQuantity1
+                        }
+                    };
+
+                    string exchange = eP.MarketID switch
+                    {
+                        "STX" => "HNX",
+                        "UPX" => "UPCOM",
+                        "DVX" => "FU",
+                        _ => ""
+                    };
+                    string Z_KEY_BUY = TEMPLATE_REDIS_KEY_PT_SIDE_B.Replace("(Exchange)", exchange);
+                    string Z_KEY_SELL = TEMPLATE_REDIS_KEY_PT_SIDE_S.Replace("(Exchange)", exchange);
+
+                    long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
+
+                    // Chỉ insert nếu có dữ liệu hợp lệ
+                    if (sideB.Data.MP > 0 && sideB.Data.MQ > 0)
+                    {
+                        string strJsonC_Buy = JsonConvert.SerializeObject(sideB);
+                        await this._redis.SortedSetAddAsync(Z_KEY_BUY, strJsonC_Buy, Z_SCORE);
+                    }
+
+                    if (sideS.Data.MP > 0 && sideS.Data.MQ > 0)
+                    {
+                        string strJsonC_Sell = JsonConvert.SerializeObject(sideS);
+                        await this._redis.SortedSetAddAsync(Z_KEY_SELL, strJsonC_Sell, Z_SCORE);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+            }
+        }
         public async Task UpdateRedisLS(EPrice eP)
         {
             try
@@ -744,6 +907,12 @@ namespace BaseSaverLib.Implementations
                 if (d_dic_stockno.ContainsKey(eP.Symbol))
                 {
                     Symbol = d_dic_stockno[eP.Symbol];
+                    bool checkDI = false;
+                    if (eP.MarketID == "DVX" || eP.MarketID == "dvx")
+                    {
+                        checkDI = true;
+                    }
+                    LS_Model ls_model = new LS_Model();
                     string time = (eP.SendingTime.Split(' ')[1]).Split('.')[0];
                     string strJsonC = "";
                     //Xử lý CN -  Lấy Guid (random)
@@ -757,12 +926,21 @@ namespace BaseSaverLib.Implementations
                     {
                         lsCN /= 10;
                     }
-                    strJsonC = TEMPLATE_JSONC_LS
-                            .Replace("(MT)", time.ToString())
-                            .Replace("(CN)", lsCN.ToString())
-                            .Replace("(MP)", eP.MatchPrice.ToString())
-                            .Replace("(MQ)", eP.NoMDEntries.ToString())
-                            .Replace("(SIDE)", eP.Side ?? "\"\"");
+                    ls_model.CN = lsCN;
+                    ls_model.MT = time.ToString();
+                    ls_model.MP = eP.MatchPrice;
+                    ls_model.MQ = eP.NoMDEntries;
+                    ls_model.SIDE = eP.Side ?? string.Empty;
+
+                    strJsonC = JsonConvert.SerializeObject(checkDI ? ls_model : new
+                    {
+                        ls_model.CN,
+                        ls_model.MT,
+                        MP = (int)ls_model.MP,
+                        ls_model.MQ,
+                        ls_model.SIDE
+                    });
+
                     string Z_KEY = TEMPLATE_REDIS_KEY_LS.Replace("(Symbol)", Symbol);
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
 
@@ -807,7 +985,8 @@ namespace BaseSaverLib.Implementations
                     }
                 }
                 if (d_dic_stockno.ContainsKey(eP.Symbol))
-                {
+                {                    
+                    LE_TKTT_Model le_tktt = new LE_TKTT_Model();
                     bool checkDI = false;
                     if (eP.MarketID == "DVX" || eP.MarketID == "dvx")
                     {
@@ -818,20 +997,20 @@ namespace BaseSaverLib.Implementations
                     string strJsonC = "";
                     string strJson_Base = "";
 
-                    strJsonC = TEMPLATE_JSONC_LE_TKTT
-                                .Replace("(MT)", time.ToString())
-                                .Replace("(MP)", eP.MatchPrice.ToString())
-                                .Replace("(TQ)", eP.TotalVolumeTraded.ToString())
-                                .Replace("(TV)", eP.GrossTradeAmt.ToString());
+                    le_tktt.MT = time.ToString();
+                    le_tktt.MP = eP.MatchPrice;
+                    le_tktt.TQ = eP.TotalVolumeTraded;
+                    le_tktt.TV    = eP.GrossTradeAmt;
 
-                    strJson_Base = TEMPLATE_JSONC_LE_TKTT
-                                .Replace("(MT)", time.ToString())
-                                .Replace("(MP)", ((int)eP.MatchPrice).ToString())
-                                .Replace("(TQ)", eP.TotalVolumeTraded.ToString())
-                                .Replace("(TV)", eP.GrossTradeAmt.ToString());
+                    strJson_Base = JsonConvert.SerializeObject(new
+                    {
+                        le_tktt.MT,
+                        MP = (int)le_tktt.MP,
+                        le_tktt.TQ,
+                        le_tktt.TV
+                    });
 
-                    string strResult = checkDI ? strJson_Base : strJsonC;
-
+                    strJsonC = checkDI ? JsonConvert.SerializeObject(le_tktt) : strJson_Base;
 
                     string Z_KEY_VAL = TEMPLATE_REDIS_KEY_LE_TKTT_VAL.Replace("(Symbol)", Symbol);
                     string Z_KEY_VOL = TEMPLATE_REDIS_KEY_LE_TKTT_VOL.Replace("(Symbol)", Symbol);
@@ -840,7 +1019,7 @@ namespace BaseSaverLib.Implementations
                     if (this._redisNewApp != null)
                     {
                         await Task.WhenAll(
-                            _redisNewApp.SortedSetAddAsync2(Z_KEY_VOL, strResult, Z_SCORE),
+                            _redisNewApp.SortedSetAddAsync2(Z_KEY_VOL, strJsonC, Z_SCORE),
                             _redisNewApp.SortedSetAddAsync2(Z_KEY_VAL, strJson_Base, Z_SCORE)
                         );
                     }
@@ -887,22 +1066,17 @@ namespace BaseSaverLib.Implementations
                     Symbol = d_dic_stockno[eP.Symbol];
                     string time = (eP.SendingTime.Split(' ')[1]).Split('.')[0];
                     string strJsonC = "";
-                    if (eP.MarketID == "STO")
+
+                    var leModel = new LE_Model
                     {
-                        strJsonC = TEMPLATE_JSONC_LE
-                                .Replace("(MT)", time.ToString())
-                                .Replace("(MQ)", Processkl(eP.MatchQuantity).ToString())
-                                .Replace("(MP)", ProcessPrice(eP.MatchPrice).ToString())
-                                .Replace("(TQ)", Processkl(eP.TotalVolumeTraded).ToString());                      
-                    }
-                    else
-                    {
-                        strJsonC = TEMPLATE_JSONC_LE
-                                .Replace("(MT)", time.ToString())
-                                .Replace("(MQ)", eP.MatchQuantity.ToString())
-                                .Replace("(MP)", ProcessPrice(eP.MatchPrice).ToString())
-                                .Replace("(TQ)", eP.TotalVolumeTraded.ToString());                       
-                    }
+                        MT = time.ToString(),
+                        MQ = eP.MatchQuantity,
+                        MP = ProcessPrice(eP.MatchPrice),
+                        TQ = eP.TotalVolumeTraded
+                    };
+
+                    strJsonC = JsonConvert.SerializeObject(leModel);
+
                     string Z_KEY = TEMPLATE_REDIS_KEY_LE.Replace("(Symbol)", Symbol);
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
                     string Z_VALUE = strJsonC;

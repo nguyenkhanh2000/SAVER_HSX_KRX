@@ -814,7 +814,6 @@ namespace PriceLib.Implementations
 				{
 					dynamicParameters.Add($"@{__ATOTALVOLUMETRADED}", eP.TotalVolumeTraded, DbType.Int64, ParameterDirection.Input);
 				}
-				
                 dynamicParameters.Add($"@{__AGROSSTRADEAMT}",      eP.GrossTradeAmt,      DbType.Decimal,    ParameterDirection.Input);
                 if (eP.BuyTotOrderQty != -9999999)
                 {
