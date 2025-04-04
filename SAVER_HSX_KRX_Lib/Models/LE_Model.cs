@@ -10,7 +10,7 @@ namespace SAVER_HSX_KRX_Lib.Models
     {
         public string MT { get; set; }
         public long MQ { get; set; }
-        public int MP { get; set; }
+        public double MP { get; set; }
         public long TQ { get; set; }
     }
 }

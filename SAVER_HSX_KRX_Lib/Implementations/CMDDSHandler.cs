@@ -54,10 +54,10 @@ namespace BaseSaverLib.Implementations
         private const string TEMPLATE_REDIS_KEY_LE_TKTT_VAL = "TKTT:VAL:(Symbol):0";
         private const string TEMPLATE_REDIS_KEY_LS = "LS:(Symbol)";
 
-        private const string TEMPLATE_REDIS_KEY_PT = "PT:SYMBOL:(Symbol)";
-        private const string TEMPLATE_REDIS_KEY_PT_ALL = "PT:ALL:HSX:KL";
-        private const string TEMPLATE_REDIS_KEY_PT_SIDE_B = "PT:ALL:HSX:BUY";
-        private const string TEMPLATE_REDIS_KEY_PT_SIDE_S = "PT:ALL:HSX:SELL";
+        private const string TEMPLATE_REDIS_KEY_PT = "PT:SYMBOL:(Symbol):(Board)";
+        private const string TEMPLATE_REDIS_KEY_PT_ALL = "PT:ALL:HSX:KL:(Board)";
+        private const string TEMPLATE_REDIS_KEY_PT_SIDE_B = "PT:ALL:HSX:BUY:(Board)";
+        private const string TEMPLATE_REDIS_KEY_PT_SIDE_S = "PT:ALL:HSX:SELL:(Board)";
 
         private const string TEMPLATE_JSONC_LE = "{\"MT\":\"(MT)\",\"MQ\":(MQ),\"MP\":(MP),\"TQ\":(TQ)}";
         private const string TEMPLATE_JSONC_LE_TKTT = "{\"MT\":\"(MT)\",\"MP\":(MP),\"TQ\":(TQ),\"TV\":(TV)}";
@@ -336,7 +336,7 @@ namespace BaseSaverLib.Implementations
                 }
                 else if(eP.MarketID == "STO" && (eP.BoardID == "T1" || eP.BoardID == "T4" || eP.BoardID == "T2" || eP.BoardID == "T3" || eP.BoardID == "T6" || eP.BoardID == "R1") /*&& eP.Side != null*/)
                 {
-                    await Task.WhenAll(UpdateRedisPT_KL(eP), UpdateRedisPT_ForAll_Side(eP));
+                    await Task.WhenAll(UpdateRedisPT_KL(eP, eP.BoardID), UpdateRedisPT_ForAll_Side(eP, eP.BoardID));
                 }
             }
             catch (Exception ex)
@@ -586,18 +586,6 @@ namespace BaseSaverLib.Implementations
                             m_queueRedis.Enqueue(eP);
 
 
-                        //if (eP.MarketID == "STO" && eP.BoardID == "G1" && eP.Side == null)
-                        //{
-                        //    await Task.WhenAll(UpdateRedisLE_TKTT2Redis(eP), UpdateRedisLE(eP), UpdateRedisLS(eP));
-                        //    _state.TotalCountArrMsg++;
-                        //}
-                        //else if (eP.MarketID == "STO" && eP.BoardID == "G4" && eP.Side != null)
-                        //{
-                        //    // Giao dịch lô lẻ cho phần chi tiết giá
-                        //    await UpdateRedisPO(eP);
-                        //    _state.TotalCountArrMsg++;
-                        //}
-                        //_state.StopwatchRD += stopWatch.ElapsedMilliseconds;
                         eBulkScript = await _repository.GetScriptPriceAll(eP);
                         break;
                     // 4.11 Price Recovery
@@ -735,7 +723,7 @@ namespace BaseSaverLib.Implementations
         /// </summary>
         /// <param name="eP"></param>
         /// <returns></returns>
-        public async Task UpdateRedisPT_KL(EPrice eP)
+        public async Task UpdateRedisPT_KL(EPrice eP, string BoardID)
         {
             try
             {
@@ -784,8 +772,8 @@ namespace BaseSaverLib.Implementations
                     string strJson_Symbol = JsonConvert.SerializeObject(pt_model);
                     string strJson_All = JsonConvert.SerializeObject(pt_all);
 
-                    string Z_KEY_SYMBOL = TEMPLATE_REDIS_KEY_PT.Replace("(Symbol)", Symbol);
-                    string Z_KEY_ALL = TEMPLATE_REDIS_KEY_PT_ALL;
+                    string Z_KEY_SYMBOL = TEMPLATE_REDIS_KEY_PT.Replace("(Symbol)", Symbol).Replace("(Board)", BoardID);
+                    string Z_KEY_ALL = TEMPLATE_REDIS_KEY_PT_ALL.Replace("(Board)", BoardID);
 
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
                     await Task.WhenAll(
@@ -799,7 +787,7 @@ namespace BaseSaverLib.Implementations
                 this._app.ErrorLogger.LogError(ex);
             }
         }
-        public async Task UpdateRedisPT_ForAll_Side(EPrice eP)
+        public async Task UpdateRedisPT_ForAll_Side(EPrice eP, string BoardID)
         {
             try
             {
@@ -851,8 +839,8 @@ namespace BaseSaverLib.Implementations
                         }
                     };
 
-                    string Z_KEY_BUY = TEMPLATE_REDIS_KEY_PT_SIDE_B;
-                    string Z_KEY_SELL = TEMPLATE_REDIS_KEY_PT_SIDE_S;
+                    string Z_KEY_BUY = TEMPLATE_REDIS_KEY_PT_SIDE_B.Replace("(Board)", BoardID);
+                    string Z_KEY_SELL = TEMPLATE_REDIS_KEY_PT_SIDE_S.Replace("(Board)", BoardID);
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
                     // Chỉ insert nếu có dữ liệu hợp lệ
                     if (sideB.Data.MP > 0 && sideB.Data.MQ > 0)
@@ -1045,7 +1033,7 @@ namespace BaseSaverLib.Implementations
                     {
                         MT = time.ToString(),
                         MQ = Processkl(eP.MatchQuantity),
-                        MP = (int)ProcessPrice(eP.MatchPrice),
+                        MP = ProcessPrice(eP.MatchPrice),
                         TQ = eP.TotalVolumeTraded
                     };
                     strJsonC = JsonConvert.SerializeObject(leModel);

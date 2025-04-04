@@ -1128,7 +1128,6 @@ namespace PriceLib.Implementations
 				IOracle oracle = new COracle(this._cS6GApp, this._ePriceConfig.ConnectionOracle);
 				string spName = this._ePriceConfig.SpMddsOracleUpdatePriceAll;
 				EDalResult result = null;
-
                 // 1. input            
                 OracleParameter[] paramArrary = new OracleParameter[]
                 {
@@ -1147,7 +1146,8 @@ namespace PriceLib.Implementations
                     new OracleParameter($"p{__ATRANSACTTIME}",       OracleDbType.Varchar2,    eP.TransactTime,       ParameterDirection.Input),
 
                     eP.TotalVolumeTraded != -9999999 ? new OracleParameter($"p{__ATOTALVOLUMETRADED}", OracleDbType.Int64, eP.TotalVolumeTraded, ParameterDirection.Input) : new OracleParameter($"p{__ATOTALVOLUMETRADED}", OracleDbType.Int64, null, ParameterDirection.Input),
-                    new OracleParameter($"p{__AGROSSTRADEAMT}", OracleDbType.Decimal, eP.GrossTradeAmt, ParameterDirection.Input),
+                    					
+					eP.GrossTradeAmt != 0 ? new OracleParameter($"p{__AGROSSTRADEAMT}", OracleDbType.Decimal, eP.GrossTradeAmt, ParameterDirection.Input) : new OracleParameter($"p{__AGROSSTRADEAMT}", OracleDbType.Decimal, null, ParameterDirection.Input),
 
                     eP.SellTotOrderQty != -9999999 ? new OracleParameter($"p{__ASELLTOTORDERQTY}", OracleDbType.Int64, eP.SellTotOrderQty, ParameterDirection.Input) : new OracleParameter($"p{__ASELLTOTORDERQTY}", OracleDbType.Int64, null, ParameterDirection.Input),
                     eP.BuyTotOrderQty != -9999999 ? new OracleParameter($"p{__ABUYTOTORDERQTY}", OracleDbType.Int64, eP.BuyTotOrderQty, ParameterDirection.Input) : new OracleParameter($"p{__ABUYTOTORDERQTY}", OracleDbType.Int64, null, ParameterDirection.Input),

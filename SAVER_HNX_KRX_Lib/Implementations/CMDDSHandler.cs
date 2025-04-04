@@ -53,10 +53,10 @@ namespace BaseSaverLib.Implementations
         private const string TEMPLATE_REDIS_KEY_LE_TKTT_VOL = "TKTT:VOL:(Symbol):0";
         private const string TEMPLATE_REDIS_KEY_LE_TKTT_VAL = "TKTT:VAL:(Symbol):0";
         private const string TEMPLATE_REDIS_KEY_LS = "LS:(Symbol)";
-        private const string TEMPLATE_REDIS_KEY_PT = "PT:SYMBOL:(Symbol)";
-        private const string TEMPLATE_REDIS_KEY_PT_ALL = "PT:ALL:(Exchange):KL";
-        private const string TEMPLATE_REDIS_KEY_PT_SIDE_B = "PT:ALL:(Exchange):BUY";
-        private const string TEMPLATE_REDIS_KEY_PT_SIDE_S = "PT:ALL:(Exchange):SELL";
+        private const string TEMPLATE_REDIS_KEY_PT = "PT:SYMBOL:(Symbol):(Board)";
+        private const string TEMPLATE_REDIS_KEY_PT_ALL = "PT:ALL:(Exchange):KL:(Board)";
+        private const string TEMPLATE_REDIS_KEY_PT_SIDE_B = "PT:ALL:(Exchange):BUY:(Board)";
+        private const string TEMPLATE_REDIS_KEY_PT_SIDE_S = "PT:ALL:(Exchange):SELL:(Board)";
 
         private const string TEMPLATE_JSONC_LE = "{\"MT\":\"(MT)\",\"MQ\":(MQ),\"MP\":(MP),\"TQ\":(TQ)}";
         private const string TEMPLATE_JSONC_LE_TKTT = "{\"MT\":\"(MT)\",\"MP\":(MP),\"TQ\":(TQ),\"TV\":(TV)}";
@@ -292,7 +292,7 @@ namespace BaseSaverLib.Implementations
                         ScriptOracle.Add(oracleBatchBuilder.ToString());
 
                         //Ghi log count
-                        this._app.SqlLogger.LogSciptSQL($"Oracle1_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
+                        this._app.SqlLogger.LogSciptSQL($"Oracle1_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");                        
                     }
                     await this._repository.ExecBulkScript_Oracle(ScriptOracle);
                 }
@@ -329,7 +329,7 @@ namespace BaseSaverLib.Implementations
                 }
                 else if ((eP.MarketID == "STX" || eP.MarketID == "UPX" || eP.MarketID == "DVX") && (eP.BoardID == "T1" || eP.BoardID == "T4" || eP.BoardID == "T2" || eP.BoardID == "T3" || eP.BoardID == "T6" || eP.BoardID == "R1") /*&& eP.Side != null*/)
                 {
-                    await Task.WhenAll(UpdateRedisPT_KL(eP), UpdateRedisPT_ForAll_Side(eP));
+                    await Task.WhenAll(UpdateRedisPT_KL(eP, eP.BoardID), UpdateRedisPT_ForAll_Side(eP, eP.BoardID));
                 }
             }
             catch (Exception ex)
@@ -715,7 +715,7 @@ namespace BaseSaverLib.Implementations
         /// </summary>
         /// <param name="eP"></param>
         /// <returns></returns>
-        public async Task UpdateRedisPT_KL(EPrice eP)
+        public async Task UpdateRedisPT_KL(EPrice eP, string BoardID)
         {
             try
             {
@@ -764,7 +764,7 @@ namespace BaseSaverLib.Implementations
                     string strJson_Symbol = JsonConvert.SerializeObject(pt_model);
                     string strJson_All = JsonConvert.SerializeObject(pt_all);
 
-                    string Z_KEY_SYMBOL = TEMPLATE_REDIS_KEY_PT.Replace("(Symbol)", Symbol);
+                    string Z_KEY_SYMBOL = TEMPLATE_REDIS_KEY_PT.Replace("(Symbol)", Symbol).Replace("(Board)", BoardID);
                     string exchange = eP.MarketID switch
                     {
                         "STX" => "HNX",
@@ -772,7 +772,7 @@ namespace BaseSaverLib.Implementations
                         "DVX" => "FU",
                         _ => ""
                     };
-                    string Z_KEY_ALL = TEMPLATE_REDIS_KEY_PT_ALL.Replace("(Exchange)", exchange);
+                    string Z_KEY_ALL = TEMPLATE_REDIS_KEY_PT_ALL.Replace("(Exchange)", exchange).Replace("(Board)", BoardID);
 
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
 
@@ -792,7 +792,7 @@ namespace BaseSaverLib.Implementations
         /// </summary>
         /// <param name="eP"></param>
         /// <returns></returns>
-        public async Task UpdateRedisPT_ForAll_Side(EPrice eP)
+        public async Task UpdateRedisPT_ForAll_Side(EPrice eP, string BoardID)
         {
             try
             {
@@ -851,19 +851,19 @@ namespace BaseSaverLib.Implementations
                         "DVX" => "FU",
                         _ => ""
                     };
-                    string Z_KEY_BUY = TEMPLATE_REDIS_KEY_PT_SIDE_B.Replace("(Exchange)", exchange);
-                    string Z_KEY_SELL = TEMPLATE_REDIS_KEY_PT_SIDE_S.Replace("(Exchange)", exchange);
+                    string Z_KEY_BUY = TEMPLATE_REDIS_KEY_PT_SIDE_B.Replace("(Exchange)", exchange).Replace("(Board)", BoardID);
+                    string Z_KEY_SELL = TEMPLATE_REDIS_KEY_PT_SIDE_S.Replace("(Exchange)", exchange).Replace("(Board)", BoardID);
 
                     long Z_SCORE = Convert.ToInt64(DateTime.Now.ToString("yyyyMMddHHmmssfff"));
 
                     // Chỉ insert nếu có dữ liệu hợp lệ
-                    if (sideB.Data.MP > 0 && sideB.Data.MQ > 0)
+                    if (sideB.Data.MP > 0 & sideB.Data.MQ > 0)
                     {
                         string strJsonC_Buy = JsonConvert.SerializeObject(sideB);
                         await this._redis.SortedSetAddAsync(Z_KEY_BUY, strJsonC_Buy, Z_SCORE);
                     }
 
-                    if (sideS.Data.MP > 0 && sideS.Data.MQ > 0)
+                    if (sideS.Data.MP > 0 & sideS.Data.MQ > 0)
                     {
                         string strJsonC_Sell = JsonConvert.SerializeObject(sideS);
                         await this._redis.SortedSetAddAsync(Z_KEY_SELL, strJsonC_Sell, Z_SCORE);
