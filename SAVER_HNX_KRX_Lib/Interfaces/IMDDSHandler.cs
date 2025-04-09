@@ -11,8 +11,7 @@ namespace BaseSaverLib.Interfaces
     public interface IMDDSHandler
     {
         //Task<EResponseResult> UpdateBulk(string dataBlock);
-        Task<EBulkScript> ProcessMessage(string msgType, string rawData, ProcessStateRedis processStateRedis);
-        Task<bool> BuildScriptSQL(string[] arrMsg);
+        Task<ProcessMessageResult> ProcessMessage(string msgType, string rawData);
         void ProcessAndEnqueueMessage(string strMessage);
         Task TimerProc_GroupREDIS();
         Task TimerProc_GroupSQL();

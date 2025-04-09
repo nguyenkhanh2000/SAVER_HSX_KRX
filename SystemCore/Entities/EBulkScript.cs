@@ -12,5 +12,5 @@ namespace SystemCore.Entities
 	{
 		public string MssqlScript { get; set; }
 		public string OracleScript { get; set; }
-	}
+    }
 }
