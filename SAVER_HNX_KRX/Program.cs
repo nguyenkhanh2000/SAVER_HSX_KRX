@@ -1,5 +1,6 @@
 using BaseBrokerLib;
 using BaseBrokerLib.Implementations;
+using BaseOracleLib;
 using BaseSaverLib;
 using BaseSaverLib.Implementations;
 using BaseSaverLib.Interfaces;
@@ -112,7 +113,7 @@ namespace SAVER_HNX_KRX
 
                 _monitor = new CMonitor(_redis);
                 _repositionry = new CMDDSRepository(_app);
-                _handler = new CMDDSHandler(_app, _repositionry, _redisConfig, _redis, _redis_NewApps, _monitor);
+                _handler = new CMDDSHandler(_app, _repositionry, _redisConfig, _redis, _redis_NewApps, _monitor, _priceConfig);
 
                 _saverConfig = new ESaverConfig();
                 _app.Configuration.GetSection(ESaverConfig.__SECTION_SAVER_CONFIG).Bind(_saverConfig);

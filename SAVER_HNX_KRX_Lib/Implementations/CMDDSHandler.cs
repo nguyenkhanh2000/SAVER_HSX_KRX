@@ -46,6 +46,7 @@ namespace BaseSaverLib.Implementations
         // vars
         private readonly IS6GApp _app;
         private readonly IMDDSRepository _repository;
+        private readonly EPriceConfig _priceConfig;
         private readonly CMonitor _monitor;
         private object m_objLocker = new object();
         private const string TEMPLATE_REDIS_KEY_REALTIME = "REALTIME:S5G_(Symbol)"; //   REALTIME:S5G_ABT
@@ -83,14 +84,15 @@ namespace BaseSaverLib.Implementations
         /// </summary>
         /// <param name="app"></param>
         /// <param name="repository"></param>
-        public CMDDSHandler(IS6GApp app, IMDDSRepository repository, CRedisConfig redisConfig,CRedis_New redis, CRedisNewApp _redis_NewApp ,CMonitor monitor)
+        public CMDDSHandler(IS6GApp app, IMDDSRepository repository, CRedisConfig redisConfig,CRedis_New redis, CRedisNewApp _redis_NewApp ,CMonitor monitor, EPriceConfig priceConfig)
         {
             this._app = app;
             this._repository = repository;
             this._redisConfig = redisConfig;
             this._redis = redis;
             this._redisNewApp = _redis_NewApp;
-           this._monitor = monitor;
+            this._monitor = monitor;
+            this._priceConfig = priceConfig;
         }
         public string GetMsgTypeSAN(string rawData)
         {
@@ -99,17 +101,14 @@ namespace BaseSaverLib.Implementations
         }
         public void ProcessAndEnqueueMessage(string strMessage)
         {
-            StringBuilder mssqlBuilder = new StringBuilder();
-            StringBuilder oracleBuilder = new StringBuilder(EGlobalConfig.__STRING_ORACLE_BLOCK_BEGIN);
             try
             {
                 if (string.IsNullOrEmpty(strMessage)) return;                
-                string str_queueRD = "";
 
                 //Lấy type của msg
                 string msgType = this._app.Common.GetMsgType(strMessage);
 
-                this._app.SqlLogger.LogSciptSQL($"LogRawData_{msgType}", $"{strMessage}");
+                this._app.SqlLogger.LogSciptSQL($"LogRawData_{msgType}", $"{strMessage.Length.ToString()}");
 
                 ProcessMessageResult processMessageResult = ProcessMessage(msgType, strMessage).GetAwaiter().GetResult();
 
@@ -173,7 +172,7 @@ namespace BaseSaverLib.Implementations
                 {
                     if (obj_msgX != null)
                     {
-                        //await ProcessDataRedis(obj_msgX);
+                        await ProcessDataRedis(obj_msgX);
                         intTotalRow++;
                         //this._app.InfoLogger.LogInfo(JsonConvert.SerializeObject(obj_msgX));
                     }
@@ -242,14 +241,14 @@ namespace BaseSaverLib.Implementations
                         //Ghi log count 
                         this._app.SqlLogger.LogSciptSQL($"SQLServer1_{msgType}", $"{mssqlBatchBuilder.ToString().Length}");
                     }
-                    //await this._repository.ExecBulkScript_SqlServer(Scriptmssql);
+                    await this._repository.ExecBulkScript_SqlServer(Scriptmssql);
                 }
-                //this._monitor.SendStatusToMonitor(
-                //this._app.Common.GetLocalDateTime(),
-                //this._app.Common.GetLocalIp(),
-                //CMonitor.MONITOR_APP.HNX_Saver5G_DB,
-                //totalcount,
-                //SW_RD.ElapsedMilliseconds);
+                this._monitor.SendStatusToMonitor(
+                this._app.Common.GetLocalDateTime(),
+                this._app.Common.GetLocalIp(),
+                CMonitor.MONITOR_APP.HNX_Saver5G_DB,
+                totalcount,
+                SW_RD.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
@@ -260,6 +259,14 @@ namespace BaseSaverLib.Implementations
                 semaphoreSQL.Release();
             }
         }
+        /// <summary>
+        /// 20250220_KhanhNV
+        /// Timer Oracle - 1s 
+        /// Now - Dequeue msg từ queueOracle -> chia các transaction theo từng type (tránh deadlock - do 2 app đều đang thao tác trên cùng 1 bảng đích)
+        /// Vấn đề: msgX và msgW excute cực lâu (1000msg ~ 15s)
+        /// Giải pháp: Không build script nữa -> chuyển sang dùng bind obj -> update ngay obj có cùng Symbol,MarketID,BoardID vào dictionary -> bulk insert vào bảng tạm -> sp update bảng đích -> xóa bảng tạm.
+        /// </summary>
+        /// <returns></returns>
         public async Task TimerProc_GroupORACLE()
         {
             await semaphoreORACLE.WaitAsync();
@@ -274,7 +281,7 @@ namespace BaseSaverLib.Implementations
                 var oracleNewLineTab = $"{EGlobalConfig.__STRING_RETURN_NEW_LINE}{EGlobalConfig.__STRING_TAB}{EGlobalConfig.__STRING_SPACE}";
                 var ScriptOracle = new List<string>();
                 int totalcount = 0;
-                int maxBatchSize = 2000; // Giới hạn tối đa 500 message mỗi lần xử lý
+                int maxBatchSize = 3000; // Giới hạn tối đa 5000 message mỗi lần xử lý
                 int count = 0;
                 var SW_RD = Stopwatch.StartNew();
                 while (totalcount < maxBatchSize && this.m_queueOracle.TryDequeue(out var objMsg))
@@ -290,11 +297,11 @@ namespace BaseSaverLib.Implementations
                             lst_eP.Add(objMsg.ePrice);
                             continue;
                         }
-                        //if (msgType.Equals("w", StringComparison.OrdinalIgnoreCase))
-                        //{
-                        //    lst_ePRecovery.Add(objMsg.ePriceRecovery);
-                        //    continue;
-                        //}
+                        if (msgType.Equals("w", StringComparison.OrdinalIgnoreCase))
+                        {
+                            lst_ePRecovery.Add(objMsg.ePriceRecovery);
+                            continue;
+                        }
 
                         if (!oracleScriptsByType.TryGetValue(msgType, out var oracleList))
                         {
@@ -307,31 +314,45 @@ namespace BaseSaverLib.Implementations
                 }
                 if (lst_eP.Count > 0)
                 {
-                    //await Oracle_BulkIns_msgX(lst_eP);
                     var updateTask = Oracle_BulkUpdate_msgX(lst_eP);
                     var insertTask = Oracle_BulkIns_msgX(lst_eP);
 
                     await Task.WhenAll(updateTask, insertTask);
                 }
-                if (totalcount > 0)
+                if (lst_ePRecovery.Count > 0)
                 {
+                    var updateTask = Oracle_BulkUpdate_msgW(lst_ePRecovery);
+                    var insertTask = Oracle_BulkIns_msgW(lst_ePRecovery);
+
+                    await Task.WhenAll(updateTask, insertTask);
+
+                }
+
+                //Phần xử lý của các msg còn lại - đã buildscript -> chạy sp theo transaction - chia theo batch (tối đa 200sp cho 1 transaction)
+                if (count > 0)
+                {
+                    int batchSizePerTransaction = 200;
                     foreach (var (msgTypes, scripts) in oracleScriptsByType)
                     {
-                        var oracleBatchBuilder = new StringBuilder(oracleBeginBlock);
-                        foreach (var script in scripts)
+                        for (int i = 0; i < scripts.Count; i += batchSizePerTransaction)
                         {
-                            oracleBatchBuilder.Append(oracleNewLineTab).Append(script);
+                            var scriptsBatch = scripts.Skip(i).Take(batchSizePerTransaction);
+                            var oracleBatchBuilder = new StringBuilder(oracleBeginBlock);
+
+                            foreach (var script in scriptsBatch)
+                            {
+                                oracleBatchBuilder.Append(oracleNewLineTab).Append(script);
+                            }
+
+                            oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
+
+                            ScriptOracle.Add(oracleBatchBuilder.ToString());
+
+                            this._app.SqlLogger.LogSciptSQL($"Oracle_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");
                         }
-                        oracleBatchBuilder.Append(oracleCommit).Append(oracleEndBlock);
-
-                        ScriptOracle.Add(oracleBatchBuilder.ToString());
-
-                        //Ghi log count
-                        this._app.SqlLogger.LogSciptSQL($"Oracle1_{msgTypes}", $"{oracleBatchBuilder.ToString().Length}");                        
                     }
                     await this._repository.ExecBulkScript_Oracle(ScriptOracle);
                 }
-                
                 this._monitor.SendStatusToMonitor(
                 this._app.Common.GetLocalDateTime(),
                 this._app.Common.GetLocalIp(),
@@ -503,9 +524,8 @@ namespace BaseSaverLib.Implementations
                 var distinctList = groupedDict.Values.ToList();
 
                 DataTable dt = ConvertEPriceListToDataTable(distinctList);
-
-
-                using (var conn = new OracleConnection("Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=10.26.7.80)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=trdkrx)));User Id=price;Password=price1234;Connection Timeout=1000;"))
+                
+                using (var conn = new OracleConnection(this._priceConfig.ConnectionOracle))
                 {
                     conn.Open();
 
@@ -529,18 +549,18 @@ namespace BaseSaverLib.Implementations
 
                                     bulkCopy.WriteToServer(dt);
                                 }
-                                Console.WriteLine("Bulk insert thành công.");
+                                //Console.WriteLine("Bulk insert thành công.");
                             }
                             catch (Exception ex)
                             {
                                 Console.WriteLine("Bulk insert lỗi: " + ex.Message);
                             }
-                            using (OracleCommand checkCmd = new OracleCommand("SELECT COUNT(*) FROM table_temporary_X", conn))
-                            {
-                                checkCmd.Transaction = transaction;
-                                var count = Convert.ToInt32(checkCmd.ExecuteScalar());
-                                Console.WriteLine("Số dòng trong bảng tạm: " + count);
-                            }
+                            //using (OracleCommand checkCmd = new OracleCommand("SELECT COUNT(*) FROM table_temporary_X", conn))
+                            //{
+                            //    checkCmd.Transaction = transaction;
+                            //    var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+                            //    Console.WriteLine("Số dòng trong bảng tạm: " + count);
+                            //}
                             // Gọi stored procedure để insert/update dữ liệu vào bảng chính
                             using (OracleCommand cmdProc = new OracleCommand("PROC_MERGE_MSG_X", conn))
                             {
@@ -561,12 +581,12 @@ namespace BaseSaverLib.Implementations
                                 cmdTruncate.Transaction = transaction;
                                 cmdTruncate.ExecuteNonQuery();
                             }
-                            using (OracleCommand checkCmd = new OracleCommand("SELECT COUNT(*) FROM table_temporary_X", conn))
-                            {
-                                checkCmd.Transaction = transaction;
-                                var count = Convert.ToInt32(checkCmd.ExecuteScalar());
-                                Console.WriteLine("Số dòng trong bảng tạm: " + count);
-                            }
+                            //using (OracleCommand checkCmd = new OracleCommand("SELECT COUNT(*) FROM table_temporary_X", conn))
+                            //{
+                            //    checkCmd.Transaction = transaction;
+                            //    var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+                            //    Console.WriteLine("Số dòng trong bảng tạm: " + count);
+                            //}
                             // Commit transaction sau khi tất cả các thao tác thành công
                             transaction.Commit();
                         }
@@ -575,7 +595,7 @@ namespace BaseSaverLib.Implementations
                             // Nếu có lỗi, rollback transaction và in ra thông báo lỗi
                             transaction.Rollback();
                             Console.WriteLine("Error: " + ex.Message);
-                            throw;
+                            this._app.ErrorLogger.LogError(ex);
                         }
                     }
                 }
@@ -592,12 +612,275 @@ namespace BaseSaverLib.Implementations
             {
                 DataTable dt = ConvertEPriceListToDataTable(lst_eP);
 
-                using (var conn = new OracleConnection("Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=10.26.7.80)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=trdkrx)));User Id=price;Password=price1234;Connection Timeout=1000;"))
+                using (var conn = new OracleConnection(this._priceConfig.ConnectionOracle))
                 {
                     conn.Open();
                     using (var bulkCopy = new OracleBulkCopy(conn))
                     {
                         bulkCopy.DestinationTableName = "tprice_intraday";
+                        bulkCopy.BatchSize = 1000;
+
+                        foreach (DataColumn col in dt.Columns)
+                        {
+                            bulkCopy.ColumnMappings.Add(col.ColumnName, col.ColumnName);
+                        }
+
+                        bulkCopy.WriteToServer(dt);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+            }
+        }
+        public async Task Oracle_BulkUpdate_msgW(List<EPriceRecovery> lst_ePRecovery)
+        {
+            try
+            {
+                // Gộp dữ liệu theo Symbol, MarketID, BoardID: giữ object cuối cùng
+                var groupedDict = new Dictionary<string, EPriceRecovery>();
+                foreach (var item in lst_ePRecovery)
+                {
+                    string key = $"{item.Symbol}|{item.MarketID}|{item.BoardID}";
+
+                    if (!groupedDict.ContainsKey(key))
+                    {
+                        groupedDict[key] = item;
+                    }
+                    else
+                    {
+                        var existing = groupedDict[key];
+                        // Merge từng trường: nếu trường mới != "-9999999" thì cập nhật
+                        existing.BeginString = item.BeginString ?? existing.BeginString;
+                        existing.BodyLength = item.BodyLength != 0 ? item.BodyLength : existing.BodyLength;
+                        existing.MsgType = item.MsgType ?? existing.MsgType;
+                        existing.SenderCompID = item.SenderCompID ?? existing.SenderCompID;
+                        existing.TargetCompID = item.TargetCompID ?? existing.TargetCompID;
+                        existing.MsgSeqNum = item.MsgSeqNum != 0 ? item.MsgSeqNum : existing.MsgSeqNum;
+                        existing.SendingTime = item.SendingTime ?? existing.SendingTime;
+                        existing.MarketID = item.MarketID;
+                        existing.BoardID = item.BoardID;
+                        existing.TradingSessionID = item.TradingSessionID ?? existing.TradingSessionID;
+                        existing.Symbol = item.Symbol;
+                        existing.OpnPx = item.OpnPx != 0 ? item.OpnPx : existing.OpnPx;
+                        existing.TrdSessnHighPx = item.TrdSessnHighPx != 0 ? item.TrdSessnHighPx : existing.TrdSessnHighPx;
+                        existing.TrdSessnLowPx = item.TrdSessnLowPx != 0 ? item.TrdSessnLowPx : existing.TrdSessnLowPx;
+                        existing.SymbolCloseInfoPx = item.SymbolCloseInfoPx != 0 ? item.SymbolCloseInfoPx : existing.SymbolCloseInfoPx;
+                        //existing.TradeDate = item.TradeDate ?? existing.TradeDate;
+                        //existing.TransactTime = item.TransactTime ?? existing.TransactTime;
+
+                        existing.TotalVolumeTraded = item.TotalVolumeTraded != -9999999 ? item.TotalVolumeTraded : existing.TotalVolumeTraded;
+                        existing.GrossTradeAmt = item.GrossTradeAmt != 0 ? item.GrossTradeAmt : existing.GrossTradeAmt;
+                        existing.BuyTotOrderQty = item.BuyTotOrderQty != -9999999 ? item.BuyTotOrderQty : existing.BuyTotOrderQty;
+                        existing.BuyValidOrderCnt = item.BuyValidOrderCnt != -9999999 ? item.BuyValidOrderCnt : existing.BuyValidOrderCnt;
+                        existing.SellTotOrderQty = item.SellTotOrderQty != -9999999 ? item.SellTotOrderQty : existing.SellTotOrderQty;
+                        existing.SellValidOrderCnt = item.SellValidOrderCnt != -9999999 ? item.SellValidOrderCnt : existing.SellValidOrderCnt;
+                        existing.NoMDEntries = item.NoMDEntries != -9999999 ? item.NoMDEntries : existing.NoMDEntries;
+
+                        existing.BuyPrice1 = item.BuyPrice1 != -9999999 ? item.BuyPrice1 : existing.BuyPrice1;
+                        existing.BuyQuantity1 = item.BuyQuantity1 != -9999999 ? item.BuyQuantity1 : existing.BuyQuantity1;
+                        existing.BuyPrice1_NOO = item.BuyPrice1_NOO != -9999999 ? item.BuyPrice1_NOO : existing.BuyPrice1_NOO;
+                        existing.BuyPrice1_MDEY = item.BuyPrice1_MDEY != -9999999 ? item.BuyPrice1_MDEY : existing.BuyPrice1_MDEY;
+                        existing.BuyPrice1_MDEMMS = item.BuyPrice1_MDEMMS != -9999999 ? item.BuyPrice1_MDEMMS : existing.BuyPrice1_MDEMMS;
+                        existing.BuyPrice2 = item.BuyPrice2 != -9999999 ? item.BuyPrice2 : existing.BuyPrice2;
+                        existing.BuyQuantity2 = item.BuyQuantity2 != -9999999 ? item.BuyQuantity2 : existing.BuyQuantity2;
+                        existing.BuyPrice2_NOO = item.BuyPrice2_NOO != -9999999 ? item.BuyPrice2_NOO : existing.BuyPrice2_NOO;
+                        existing.BuyPrice2_MDEY = item.BuyPrice2_MDEY != -9999999 ? item.BuyPrice2_MDEY : existing.BuyPrice2_MDEY;
+                        existing.BuyPrice2_MDEMMS = item.BuyPrice2_MDEMMS != -9999999 ? item.BuyPrice2_MDEMMS : existing.BuyPrice2_MDEMMS;
+                        existing.BuyPrice3 = item.BuyPrice3 != -9999999 ? item.BuyPrice3 : existing.BuyPrice3;
+                        existing.BuyQuantity3 = item.BuyQuantity3 != -9999999 ? item.BuyQuantity3 : existing.BuyQuantity3;
+                        existing.BuyPrice3_NOO = item.BuyPrice3_NOO != -9999999 ? item.BuyPrice3_NOO : existing.BuyPrice3_NOO;
+                        existing.BuyPrice3_MDEY = item.BuyPrice3_MDEY != -9999999 ? item.BuyPrice3_MDEY : existing.BuyPrice3_MDEY;
+                        existing.BuyPrice3_MDEMMS = item.BuyPrice3_MDEMMS != -9999999 ? item.BuyPrice3_MDEMMS : existing.BuyPrice3_MDEMMS;
+                        existing.BuyPrice4 = item.BuyPrice4 != -9999999 ? item.BuyPrice4 : existing.BuyPrice4;
+                        existing.BuyQuantity4 = item.BuyQuantity4 != -9999999 ? item.BuyQuantity4 : existing.BuyQuantity4;
+                        existing.BuyPrice4_NOO = item.BuyPrice4_NOO != -9999999 ? item.BuyPrice4_NOO : existing.BuyPrice4_NOO;
+                        existing.BuyPrice4_MDEY = item.BuyPrice4_MDEY != -9999999 ? item.BuyPrice4_MDEY : existing.BuyPrice4_MDEY;
+                        existing.BuyPrice4_MDEMMS = item.BuyPrice4_MDEMMS != -9999999 ? item.BuyPrice4_MDEMMS : existing.BuyPrice4_MDEMMS;
+                        existing.BuyPrice5 = item.BuyPrice5 != -9999999 ? item.BuyPrice5 : existing.BuyPrice5;
+                        existing.BuyQuantity5 = item.BuyQuantity5 != -9999999 ? item.BuyQuantity5 : existing.BuyQuantity5;
+                        existing.BuyPrice5_NOO = item.BuyPrice5_NOO != -9999999 ? item.BuyPrice5_NOO : existing.BuyPrice5_NOO;
+                        existing.BuyPrice5_MDEY = item.BuyPrice5_MDEY != -9999999 ? item.BuyPrice5_MDEY : existing.BuyPrice5_MDEY;
+                        existing.BuyPrice5_MDEMMS = item.BuyPrice5_MDEMMS != -9999999 ? item.BuyPrice5_MDEMMS : existing.BuyPrice5_MDEMMS;
+                        existing.BuyPrice6 = item.BuyPrice6 != -9999999 ? item.BuyPrice6 : existing.BuyPrice6;
+                        existing.BuyQuantity6 = item.BuyQuantity6 != -9999999 ? item.BuyQuantity6 : existing.BuyQuantity6;
+                        existing.BuyPrice6_NOO = item.BuyPrice6_NOO != -9999999 ? item.BuyPrice6_NOO : existing.BuyPrice6_NOO;
+                        existing.BuyPrice6_MDEY = item.BuyPrice6_MDEY != -9999999 ? item.BuyPrice6_MDEY : existing.BuyPrice6_MDEY;
+                        existing.BuyPrice6_MDEMMS = item.BuyPrice6_MDEMMS != -9999999 ? item.BuyPrice6_MDEMMS : existing.BuyPrice6_MDEMMS;
+                        existing.BuyPrice7 = item.BuyPrice7 != -9999999 ? item.BuyPrice7 : existing.BuyPrice7;
+                        existing.BuyQuantity7 = item.BuyQuantity7 != -9999999 ? item.BuyQuantity7 : existing.BuyQuantity7;
+                        existing.BuyPrice7_NOO = item.BuyPrice7_NOO != -9999999 ? item.BuyPrice7_NOO : existing.BuyPrice7_NOO;
+                        existing.BuyPrice7_MDEY = item.BuyPrice7_MDEY != -9999999 ? item.BuyPrice7_MDEY : existing.BuyPrice7_MDEY;
+                        existing.BuyPrice7_MDEMMS = item.BuyPrice7_MDEMMS != -9999999 ? item.BuyPrice7_MDEMMS : existing.BuyPrice7_MDEMMS;
+                        existing.BuyPrice8 = item.BuyPrice8 != -9999999 ? item.BuyPrice8 : existing.BuyPrice8;
+                        existing.BuyQuantity8 = item.BuyQuantity8 != -9999999 ? item.BuyQuantity8 : existing.BuyQuantity8;
+                        existing.BuyPrice8_NOO = item.BuyPrice8_NOO != -9999999 ? item.BuyPrice8_NOO : existing.BuyPrice8_NOO;
+                        existing.BuyPrice8_MDEY = item.BuyPrice8_MDEY != -9999999 ? item.BuyPrice8_MDEY : existing.BuyPrice8_MDEY;
+                        existing.BuyPrice8_MDEMMS = item.BuyPrice8_MDEMMS != -9999999 ? item.BuyPrice8_MDEMMS : existing.BuyPrice8_MDEMMS;
+                        existing.BuyPrice9 = item.BuyPrice9 != -9999999 ? item.BuyPrice9 : existing.BuyPrice9;
+                        existing.BuyQuantity9 = item.BuyQuantity9 != -9999999 ? item.BuyQuantity9 : existing.BuyQuantity9;
+                        existing.BuyPrice9_NOO = item.BuyPrice9_NOO != -9999999 ? item.BuyPrice9_NOO : existing.BuyPrice9_NOO;
+                        existing.BuyPrice9_MDEY = item.BuyPrice9_MDEY != -9999999 ? item.BuyPrice9_MDEY : existing.BuyPrice9_MDEY;
+                        existing.BuyPrice9_MDEMMS = item.BuyPrice9_MDEMMS != -9999999 ? item.BuyPrice9_MDEMMS : existing.BuyPrice9_MDEMMS;
+                        existing.BuyPrice10 = item.BuyPrice10 != -9999999 ? item.BuyPrice10 : existing.BuyPrice10;
+                        existing.BuyQuantity10 = item.BuyQuantity10 != -9999999 ? item.BuyQuantity10 : existing.BuyQuantity10;
+                        existing.BuyPrice10_NOO = item.BuyPrice10_NOO != -9999999 ? item.BuyPrice10_NOO : existing.BuyPrice10_NOO;
+                        existing.BuyPrice10_MDEY = item.BuyPrice10_MDEY != -9999999 ? item.BuyPrice10_MDEY : existing.BuyPrice10_MDEY;
+                        existing.BuyPrice10_MDEMMS = item.BuyPrice10_MDEMMS != -9999999 ? item.BuyPrice10_MDEMMS : existing.BuyPrice10_MDEMMS;
+
+                        existing.SellPrice1 = item.SellPrice1 != -9999999 ? item.SellPrice1 : existing.SellPrice1;
+                        existing.SellQuantity1 = item.SellQuantity1 != -9999999 ? item.SellQuantity1 : existing.SellQuantity1;
+                        existing.SellPrice1_NOO = item.SellPrice1_NOO != -9999999 ? item.SellPrice1_NOO : existing.SellPrice1_NOO;
+                        existing.SellPrice1_MDEY = item.SellPrice1_MDEY != -9999999 ? item.SellPrice1_MDEY : existing.SellPrice1_MDEY;
+                        existing.SellPrice1_MDEMMS = item.SellPrice1_MDEMMS != -9999999 ? item.SellPrice1_MDEMMS : existing.SellPrice1_MDEMMS;
+                        existing.SellPrice2 = item.SellPrice2 != -9999999 ? item.SellPrice2 : existing.SellPrice2;
+                        existing.SellQuantity2 = item.SellQuantity2 != -9999999 ? item.SellQuantity2 : existing.SellQuantity2;
+                        existing.SellPrice2_NOO = item.SellPrice2_NOO != -9999999 ? item.SellPrice2_NOO : existing.SellPrice2_NOO;
+                        existing.SellPrice2_MDEY = item.SellPrice2_MDEY != -9999999 ? item.SellPrice2_MDEY : existing.SellPrice2_MDEY;
+                        existing.SellPrice2_MDEMMS = item.SellPrice2_MDEMMS != -9999999 ? item.SellPrice2_MDEMMS : existing.SellPrice2_MDEMMS;
+                        existing.SellPrice3 = item.SellPrice3 != -9999999 ? item.SellPrice3 : existing.SellPrice3;
+                        existing.SellQuantity3 = item.SellQuantity3 != -9999999 ? item.SellQuantity3 : existing.SellQuantity3;
+                        existing.SellPrice3_NOO = item.SellPrice3_NOO != -9999999 ? item.SellPrice3_NOO : existing.SellPrice3_NOO;
+                        existing.SellPrice3_MDEY = item.SellPrice3_MDEY != -9999999 ? item.SellPrice3_MDEY : existing.SellPrice3_MDEY;
+                        existing.SellPrice3_MDEMMS = item.SellPrice3_MDEMMS != -9999999 ? item.SellPrice3_MDEMMS : existing.SellPrice3_MDEMMS;
+                        existing.SellPrice4 = item.SellPrice4 != -9999999 ? item.SellPrice4 : existing.SellPrice4;
+                        existing.SellQuantity4 = item.SellQuantity4 != -9999999 ? item.SellQuantity4 : existing.SellQuantity4;
+                        existing.SellPrice4_NOO = item.SellPrice4_NOO != -9999999 ? item.SellPrice4_NOO : existing.SellPrice4_NOO;
+                        existing.SellPrice4_MDEY = item.SellPrice4_MDEY != -9999999 ? item.SellPrice4_MDEY : existing.SellPrice4_MDEY;
+                        existing.SellPrice4_MDEMMS = item.SellPrice4_MDEMMS != -9999999 ? item.SellPrice4_MDEMMS : existing.SellPrice4_MDEMMS;
+                        existing.SellPrice5 = item.SellPrice5 != -9999999 ? item.SellPrice5 : existing.SellPrice5;
+                        existing.SellQuantity5 = item.SellQuantity5 != -9999999 ? item.SellQuantity5 : existing.SellQuantity5;
+                        existing.SellPrice5_NOO = item.SellPrice5_NOO != -9999999 ? item.SellPrice5_NOO : existing.SellPrice5_NOO;
+                        existing.SellPrice5_MDEY = item.SellPrice5_MDEY != -9999999 ? item.SellPrice5_MDEY : existing.SellPrice5_MDEY;
+                        existing.SellPrice5_MDEMMS = item.SellPrice5_MDEMMS != -9999999 ? item.SellPrice5_MDEMMS : existing.SellPrice5_MDEMMS;
+                        existing.SellPrice6 = item.SellPrice6 != -9999999 ? item.SellPrice6 : existing.SellPrice6;
+                        existing.SellQuantity6 = item.SellQuantity6 != -9999999 ? item.SellQuantity6 : existing.SellQuantity6;
+                        existing.SellPrice6_NOO = item.SellPrice6_NOO != -9999999 ? item.SellPrice6_NOO : existing.SellPrice6_NOO;
+                        existing.SellPrice6_MDEY = item.SellPrice6_MDEY != -9999999 ? item.SellPrice6_MDEY : existing.SellPrice6_MDEY;
+                        existing.SellPrice6_MDEMMS = item.SellPrice6_MDEMMS != -9999999 ? item.SellPrice6_MDEMMS : existing.SellPrice6_MDEMMS;
+                        existing.SellPrice7 = item.SellPrice7 != -9999999 ? item.SellPrice7 : existing.SellPrice7;
+                        existing.SellQuantity7 = item.SellQuantity7 != -9999999 ? item.SellQuantity7 : existing.SellQuantity7;
+                        existing.SellPrice7_NOO = item.SellPrice7_NOO != -9999999 ? item.SellPrice7_NOO : existing.SellPrice7_NOO;
+                        existing.SellPrice7_MDEY = item.SellPrice7_MDEY != -9999999 ? item.SellPrice7_MDEY : existing.SellPrice7_MDEY;
+                        existing.SellPrice7_MDEMMS = item.SellPrice7_MDEMMS != -9999999 ? item.SellPrice7_MDEMMS : existing.SellPrice7_MDEMMS;
+                        existing.SellPrice8 = item.SellPrice8 != -9999999 ? item.SellPrice8 : existing.SellPrice8;
+                        existing.SellQuantity8 = item.SellQuantity8 != -9999999 ? item.SellQuantity8 : existing.SellQuantity8;
+                        existing.SellPrice8_NOO = item.SellPrice8_NOO != -9999999 ? item.SellPrice8_NOO : existing.SellPrice8_NOO;
+                        existing.SellPrice8_MDEY = item.SellPrice8_MDEY != -9999999 ? item.SellPrice8_MDEY : existing.SellPrice8_MDEY;
+                        existing.SellPrice8_MDEMMS = item.SellPrice8_MDEMMS != -9999999 ? item.SellPrice8_MDEMMS : existing.SellPrice8_MDEMMS;
+                        existing.SellPrice9 = item.SellPrice9 != -9999999 ? item.SellPrice9 : existing.SellPrice9;
+                        existing.SellQuantity9 = item.SellQuantity9 != -9999999 ? item.SellQuantity9 : existing.SellQuantity9;
+                        existing.SellPrice9_NOO = item.SellPrice9_NOO != -9999999 ? item.SellPrice9_NOO : existing.SellPrice9_NOO;
+                        existing.SellPrice9_MDEY = item.SellPrice9_MDEY != -9999999 ? item.SellPrice9_MDEY : existing.SellPrice9_MDEY;
+                        existing.SellPrice9_MDEMMS = item.SellPrice9_MDEMMS != -9999999 ? item.SellPrice9_MDEMMS : existing.SellPrice9_MDEMMS;
+                        existing.SellPrice10 = item.SellPrice10 != -9999999 ? item.SellPrice10 : existing.SellPrice10;
+                        existing.SellQuantity10 = item.SellQuantity10 != -9999999 ? item.SellQuantity10 : existing.SellQuantity10;
+                        existing.SellPrice10_NOO = item.SellPrice10_NOO != -9999999 ? item.SellPrice10_NOO : existing.SellPrice10_NOO;
+                        existing.SellPrice10_MDEY = item.SellPrice10_MDEY != -9999999 ? item.SellPrice10_MDEY : existing.SellPrice10_MDEY;
+                        existing.SellPrice10_MDEMMS = item.SellPrice10_MDEMMS != -9999999 ? item.SellPrice10_MDEMMS : existing.SellPrice10_MDEMMS;
+                        existing.MatchPrice = item.MatchPrice != -9999999 ? item.MatchPrice : existing.MatchPrice;
+                        existing.MatchQuantity = item.MatchQuantity != -9999999 ? item.MatchQuantity : existing.MatchQuantity;
+                        existing.OpenPrice = item.OpenPrice != -9999999 ? item.OpenPrice : existing.OpenPrice;
+                        existing.ClosePrice = item.ClosePrice != -9999999 ? item.ClosePrice : existing.ClosePrice;
+                        existing.HighestPrice = item.HighestPrice != -9999999 ? item.HighestPrice : existing.HighestPrice;
+                        existing.LowestPrice = item.LowestPrice != -9999999 ? item.LowestPrice : existing.LowestPrice;
+                        existing.CheckSum = item.CheckSum ?? existing.CheckSum;
+                    }
+                }
+                var distinctList = groupedDict.Values.ToList();
+                DataTable dt = ConvertEPriceRecoveryListToDataTable(distinctList);
+                using (var conn = new OracleConnection(this._priceConfig.ConnectionOracle))
+                {
+                    conn.Open();
+
+                    // Bắt đầu transaction để đảm bảo tính toàn vẹn dữ liệu
+                    using (var transaction = conn.BeginTransaction())
+                    {
+                        try
+                        {
+                            // Sử dụng OracleBulkCopy để insert dữ liệu vào bảng tạm
+                            try
+                            {
+                                using (var bulkCopy = new OracleBulkCopy(conn))
+                                {
+                                    bulkCopy.DestinationTableName = "table_temporary_W";
+                                    bulkCopy.BatchSize = 1000;
+
+                                    foreach (DataColumn col in dt.Columns)
+                                    {
+                                        bulkCopy.ColumnMappings.Add(col.ColumnName, col.ColumnName);
+                                    }
+
+                                    bulkCopy.WriteToServer(dt);
+                                }
+                                //Console.WriteLine("Bulk insert thành công.");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine("Bulk insert lỗi: " + ex.Message);
+                            }
+                            //using (OracleCommand checkCmd = new OracleCommand("SELECT COUNT(*) FROM table_temporary_W", conn))
+                            //{
+                            //    checkCmd.Transaction = transaction;
+                            //    var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+                            //    Console.WriteLine("Số dòng trong bảng tạm: " + count);
+                            //}
+                            // Gọi stored procedure để insert/update dữ liệu vào bảng chính
+                            using (OracleCommand cmdProc = new OracleCommand("PROC_MERGE_MSG_W", conn))
+                            {
+                                cmdProc.CommandType = System.Data.CommandType.StoredProcedure;
+
+                                // Thêm các tham số nếu cần thiết
+                                //cmdProc.Parameters.Add("preturnMess", OracleDbType.Varchar2).Value = value1;
+                                OracleParameter outputParam = new OracleParameter("v_err_msg", OracleDbType.Varchar2, 1000);
+                                outputParam.Direction = ParameterDirection.Output;
+                                cmdProc.Parameters.Add(outputParam);
+
+                                cmdProc.Transaction = transaction; // Thiết lập transaction cho stored procedure
+                                cmdProc.ExecuteNonQuery(); // Thực thi SP
+                            }
+                            // Xóa dữ liệu trong bảng tạm sau khi xử lý xong
+                            using (OracleCommand cmdTruncate = new OracleCommand("TRUNCATE TABLE table_temporary_W", conn))
+                            {
+                                cmdTruncate.Transaction = transaction;
+                                cmdTruncate.ExecuteNonQuery();
+                            }
+                            //using (OracleCommand checkCmd = new OracleCommand("SELECT COUNT(*) FROM table_temporary_W", conn))
+                            //{
+                            //    checkCmd.Transaction = transaction;
+                            //    var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+                            //    Console.WriteLine("Số dòng trong bảng tạm: " + count);
+                            //}
+                            // Commit transaction sau khi tất cả các thao tác thành công
+                            transaction.Commit();
+                        }
+                        catch (Exception ex)
+                        {
+                            // Nếu có lỗi, rollback transaction và in ra thông báo lỗi
+                            transaction.Rollback();
+                            Console.WriteLine("Error: " + ex.Message);
+                            this._app.ErrorLogger.LogError(ex);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+            }
+        }
+        public async Task Oracle_BulkIns_msgW(List<EPriceRecovery> lst_ePRecovery)
+        {
+            try
+            {
+                DataTable dt = ConvertEPriceRecoveryListToDataTable(lst_ePRecovery);
+                using (var conn = new OracleConnection(this._priceConfig.ConnectionOracle))
+                {
+                    conn.Open();
+                    using (var bulkCopy = new OracleBulkCopy(conn))
+                    {
+                        bulkCopy.DestinationTableName = "tpricerecovery_intraday";
                         bulkCopy.BatchSize = 1000;
 
                         foreach (DataColumn col in dt.Columns)
@@ -1505,6 +1788,317 @@ namespace BaseSaverLib.Implementations
                     row["aSymbol"] = item.Symbol;
                     row["aTradeDate"] = item.TradeDate;
                     row["aTransactTime"] = item.TransactTime;
+
+                    row["aTotalVolumeTraded"] = item.TotalVolumeTraded != -9999999 ? (object)item.TotalVolumeTraded : DBNull.Value;
+                    row["aGrossTradeAmt"] = item.GrossTradeAmt != -9999999 ? (object)item.GrossTradeAmt : DBNull.Value;
+                    row["aBuyTotOrderQty"] = item.BuyTotOrderQty != -9999999 ? (object)item.BuyTotOrderQty : DBNull.Value;
+                    row["aBuyValidOrderCnt"] = item.BuyValidOrderCnt != -9999999 ? (object)item.BuyValidOrderCnt : DBNull.Value;
+                    row["aSellTotOrderQty"] = item.SellTotOrderQty != -9999999 ? (object)item.SellTotOrderQty : DBNull.Value;
+                    row["aSellValidOrderCnt"] = item.SellValidOrderCnt != -9999999 ? (object)item.SellValidOrderCnt : DBNull.Value;
+                    row["aNoMDEntries"] = item.NoMDEntries != -9999999 ? (object)item.NoMDEntries : DBNull.Value;
+
+
+                    row["aBuyPrice1"] = item.BuyPrice1 != -9999999 ? (object)item.BuyPrice1 : DBNull.Value;
+                    row["aBuyQuantity1"] = item.BuyQuantity1 != -9999999 ? (object)item.BuyQuantity1 : DBNull.Value;
+                    row["aBuyPrice1_NOO"] = item.BuyPrice1_NOO;
+                    row["aBuyPrice1_MDEY"] = item.BuyPrice1_MDEY;
+                    row["aBuyPrice1_MDEMMS"] = item.BuyPrice1_MDEMMS;
+                    row["aBuyPrice2"] = item.BuyPrice2 != -9999999 ? (object)item.BuyPrice2 : DBNull.Value;
+                    row["aBuyQuantity2"] = item.BuyQuantity2 != -9999999 ? (object)item.BuyQuantity2 : DBNull.Value;
+                    row["aBuyPrice2_NOO"] = item.BuyPrice2_NOO;
+                    row["aBuyPrice2_MDEY"] = item.BuyPrice2_MDEY;
+                    row["aBuyPrice2_MDEMMS"] = item.BuyPrice2_MDEMMS;
+                    row["aBuyPrice3"] = item.BuyPrice3 != -9999999 ? (object)item.BuyPrice3 : DBNull.Value;
+                    row["aBuyQuantity3"] = item.BuyQuantity3 != -9999999 ? (object)item.BuyQuantity3 : DBNull.Value;
+                    row["aBuyPrice3_NOO"] = item.BuyPrice3_NOO;
+                    row["aBuyPrice3_MDEY"] = item.BuyPrice3_MDEY;
+                    row["aBuyPrice3_MDEMMS"] = item.BuyPrice3_MDEMMS;
+
+                    row["aBuyPrice4"] = item.BuyPrice4 != -9999999 ? (object)item.BuyPrice4 : DBNull.Value;
+                    row["aBuyQuantity4"] = item.BuyQuantity4 != -9999999 ? (object)item.BuyQuantity4 : DBNull.Value;
+                    row["aBuyPrice4_NOO"] = item.BuyPrice4_NOO;
+                    row["aBuyPrice4_MDEY"] = item.BuyPrice4_MDEY;
+                    row["aBuyPrice4_MDEMMS"] = item.BuyPrice4_MDEMMS;
+                    row["aBuyPrice5"] = item.BuyPrice5 != -9999999 ? (object)item.BuyPrice5 : DBNull.Value;
+                    row["aBuyQuantity5"] = item.BuyQuantity5 != -9999999 ? (object)item.BuyQuantity5 : DBNull.Value;
+                    row["aBuyPrice5_NOO"] = item.BuyPrice5_NOO;
+                    row["aBuyPrice5_MDEY"] = item.BuyPrice5_MDEY;
+                    row["aBuyPrice5_MDEMMS"] = item.BuyPrice5_MDEMMS;
+                    row["aBuyPrice6"] = item.BuyPrice6 != -9999999 ? (object)item.BuyPrice6 : DBNull.Value;
+                    row["aBuyQuantity6"] = item.BuyQuantity6 != -9999999 ? (object)item.BuyQuantity6 : DBNull.Value;
+                    row["aBuyPrice6_NOO"] = item.BuyPrice6_NOO;
+                    row["aBuyPrice6_MDEY"] = item.BuyPrice6_MDEY;
+                    row["aBuyPrice6_MDEMMS"] = item.BuyPrice6_MDEMMS;
+
+                    row["aBuyPrice7"] = item.BuyPrice7 != -9999999 ? (object)item.BuyPrice7 : DBNull.Value;
+                    row["aBuyQuantity7"] = item.BuyQuantity7 != -9999999 ? (object)item.BuyQuantity7 : DBNull.Value;
+                    row["aBuyPrice7_NOO"] = item.BuyPrice7_NOO;
+                    row["aBuyPrice7_MDEY"] = item.BuyPrice7_MDEY;
+                    row["aBuyPrice7_MDEMMS"] = item.BuyPrice7_MDEMMS;
+                    row["aBuyPrice8"] = item.BuyPrice8 != -9999999 ? (object)item.BuyPrice8 : DBNull.Value;
+                    row["aBuyQuantity8"] = item.BuyQuantity8 != -9999999 ? (object)item.BuyQuantity8 : DBNull.Value;
+                    row["aBuyPrice8_NOO"] = item.BuyPrice8_NOO;
+                    row["aBuyPrice8_MDEY"] = item.BuyPrice8_MDEY;
+                    row["aBuyPrice8_MDEMMS"] = item.BuyPrice8_MDEMMS;
+                    row["aBuyPrice9"] = item.BuyPrice9 != -9999999 ? (object)item.BuyPrice9 : DBNull.Value;
+                    row["aBuyQuantity9"] = item.BuyQuantity9 != -9999999 ? (object)item.BuyQuantity9 : DBNull.Value;
+                    row["aBuyPrice9_NOO"] = item.BuyPrice9_NOO;
+                    row["aBuyPrice9_MDEY"] = item.BuyPrice9_MDEY;
+                    row["aBuyPrice9_MDEMMS"] = item.BuyPrice9_MDEMMS;
+                    row["aBuyPrice10"] = item.BuyPrice10 != -9999999 ? (object)item.BuyPrice10 : DBNull.Value;
+                    row["aBuyQuantity10"] = item.BuyQuantity10 != -9999999 ? (object)item.BuyQuantity10 : DBNull.Value;
+                    row["aBuyPrice10_NOO"] = item.BuyPrice10_NOO;
+                    row["aBuyPrice10_MDEY"] = item.BuyPrice10_MDEY;
+                    row["aBuyPrice10_MDEMMS"] = item.BuyPrice10_MDEMMS;
+
+                    row["aSellPrice1"] = item.SellPrice1 != -9999999 ? (object)item.SellPrice1 : DBNull.Value;
+                    row["aSellQuantity1"] = item.SellQuantity1 != -9999999 ? (object)item.SellQuantity1 : DBNull.Value;
+                    row["aSellPrice1_NOO"] = item.SellPrice1_NOO;
+                    row["aSellPrice1_MDEY"] = item.SellPrice1_MDEY;
+                    row["aSellPrice1_MDEMMS"] = item.SellPrice1_MDEMMS;
+                    row["aSellPrice2"] = item.SellPrice2 != -9999999 ? (object)item.SellPrice2 : DBNull.Value;
+                    row["aSellQuantity2"] = item.SellQuantity2 != -9999999 ? (object)item.SellQuantity2 : DBNull.Value;
+                    row["aSellPrice2_NOO"] = item.SellPrice2_NOO;
+                    row["aSellPrice2_MDEY"] = item.SellPrice2_MDEY;
+                    row["aSellPrice2_MDEMMS"] = item.SellPrice2_MDEMMS;
+                    row["aSellPrice3"] = item.SellPrice3 != -9999999 ? (object)item.SellPrice3 : DBNull.Value;
+                    row["aSellQuantity3"] = item.SellQuantity3 != -9999999 ? (object)item.SellQuantity3 : DBNull.Value;
+                    row["aSellPrice3_NOO"] = item.SellPrice3_NOO;
+                    row["aSellPrice3_MDEY"] = item.SellPrice3_MDEY;
+                    row["aSellPrice3_MDEMMS"] = item.SellPrice3_MDEMMS;
+                    row["aSellPrice4"] = item.SellPrice4 != -9999999 ? (object)item.SellPrice4 : DBNull.Value;
+                    row["aSellQuantity4"] = item.SellQuantity4 != -9999999 ? (object)item.SellQuantity4 : DBNull.Value;
+                    row["aSellPrice4_NOO"] = item.SellPrice4_NOO;
+                    row["aSellPrice4_MDEY"] = item.SellPrice4_MDEY;
+                    row["aSellPrice4_MDEMMS"] = item.SellPrice4_MDEMMS;
+                    row["aSellPrice5"] = item.SellPrice5 != -9999999 ? (object)item.SellPrice5 : DBNull.Value;
+                    row["aSellQuantity5"] = item.SellQuantity5 != -9999999 ? (object)item.SellQuantity5 : DBNull.Value;
+                    row["aSellPrice5_NOO"] = item.SellPrice5_NOO;
+                    row["aSellPrice5_MDEY"] = item.SellPrice5_MDEY;
+                    row["aSellPrice5_MDEMMS"] = item.SellPrice5_MDEMMS;
+                    row["aSellPrice6"] = item.SellPrice6 != -9999999 ? (object)item.SellPrice6 : DBNull.Value;
+                    row["aSellQuantity6"] = item.SellQuantity6 != -9999999 ? (object)item.SellQuantity6 : DBNull.Value;
+                    row["aSellPrice6_NOO"] = item.SellPrice6_NOO;
+                    row["aSellPrice6_MDEY"] = item.SellPrice6_MDEY;
+                    row["aSellPrice6_MDEMMS"] = item.SellPrice6_MDEMMS;
+                    row["aSellPrice7"] = item.SellPrice7 != -9999999 ? (object)item.SellPrice7 : DBNull.Value;
+                    row["aSellQuantity7"] = item.SellQuantity7 != -9999999 ? (object)item.SellQuantity7 : DBNull.Value;
+                    row["aSellPrice7_NOO"] = item.SellPrice7_NOO;
+                    row["aSellPrice7_MDEY"] = item.SellPrice7_MDEY;
+                    row["aSellPrice7_MDEMMS"] = item.SellPrice7_MDEMMS;
+                    row["aSellPrice8"] = item.SellPrice8 != -9999999 ? (object)item.SellPrice8 : DBNull.Value;
+                    row["aSellQuantity8"] = item.SellQuantity8 != -9999999 ? (object)item.SellQuantity8 : DBNull.Value;
+                    row["aSellPrice8_NOO"] = item.SellPrice8_NOO;
+                    row["aSellPrice8_MDEY"] = item.SellPrice8_MDEY;
+                    row["aSellPrice8_MDEMMS"] = item.SellPrice8_MDEMMS;
+                    row["aSellPrice9"] = item.SellPrice9 != -9999999 ? (object)item.SellPrice9 : DBNull.Value;
+                    row["aSellQuantity9"] = item.SellQuantity9 != -9999999 ? (object)item.SellQuantity9 : DBNull.Value;
+                    row["aSellPrice9_NOO"] = item.SellPrice9_NOO;
+                    row["aSellPrice9_MDEY"] = item.SellPrice9_MDEY;
+                    row["aSellPrice9_MDEMMS"] = item.SellPrice9_MDEMMS;
+                    row["aSellPrice10"] = item.SellPrice10 != -9999999 ? (object)item.SellPrice10 : DBNull.Value;
+                    row["aSellQuantity10"] = item.SellQuantity10 != -9999999 ? (object)item.SellQuantity10 : DBNull.Value;
+                    row["aSellPrice10_NOO"] = item.SellPrice10_NOO;
+                    row["aSellPrice10_MDEY"] = item.SellPrice10_MDEY;
+                    row["aSellPrice10_MDEMMS"] = item.SellPrice10_MDEMMS;
+
+                    row["aMatchPrice"] = item.MatchPrice != -9999999 ? (object)item.MatchPrice : DBNull.Value;
+                    row["aMatchQuantity"] = item.MatchQuantity != -9999999 ? (object)item.MatchQuantity : DBNull.Value;
+                    row["aOpenPrice"] = item.OpenPrice != -9999999 ? (object)item.OpenPrice : DBNull.Value;
+                    row["aClosePrice"] = item.ClosePrice != -9999999 ? (object)item.ClosePrice : DBNull.Value;
+                    row["aHighestPrice"] = item.HighestPrice != -9999999 ? (object)item.HighestPrice : DBNull.Value;
+                    row["aLowestPrice"] = item.LowestPrice != -9999999 ? (object)item.LowestPrice : DBNull.Value;
+                    //row["RepeatingDataFix"] = item.RepeatingDataFix;
+                    //row["RepeatingDataJson"] = item.RepeatingDataJson;
+                    row["aCheckSum"] = item.CheckSum;
+                    dt.Rows.Add(row);
+                }
+                return dt;
+            }
+            catch (Exception ex)
+            {
+                this._app.ErrorLogger.LogError(ex);
+                return null;
+            }
+        }
+        public DataTable ConvertEPriceRecoveryListToDataTable(List<EPriceRecovery> lst_ePRecovery)
+        {
+            try
+            {
+                DataTable dt = new DataTable();
+
+                dt.Columns.Add("aBeginString", typeof(string));
+                dt.Columns.Add("aBodyLength", typeof(string));
+                dt.Columns.Add("aMsgType", typeof(string));
+                dt.Columns.Add("aSenderCompID", typeof(string));
+                dt.Columns.Add("aTargetCompID", typeof(string));
+                dt.Columns.Add("aMsgSeqNum", typeof(string));
+                dt.Columns.Add("aSendingTime", typeof(DateTime));
+                dt.Columns.Add("aMarketID", typeof(string));
+                dt.Columns.Add("aBoardID", typeof(string));
+                dt.Columns.Add("aTradingSessionID", typeof(string));
+                dt.Columns.Add("aSymbol", typeof(string));
+
+
+                dt.Columns.Add("aOpnPx", typeof(string));
+                dt.Columns.Add("aTrdSessnHighPx", typeof(string));
+                dt.Columns.Add("aTrdSessnLowPx", typeof(string));
+                dt.Columns.Add("aSymbolCloseInfoPx", typeof(string));
+                //dt.Columns.Add("aTradeDate", typeof(string));
+                //dt.Columns.Add("aTransactTime", typeof(string));
+
+                dt.Columns.Add("aTotalVolumeTraded", typeof(string));
+                dt.Columns.Add("aGrossTradeAmt", typeof(string));
+                dt.Columns.Add("aBuyTotOrderQty", typeof(string));
+                dt.Columns.Add("aBuyValidOrderCnt", typeof(string));
+                dt.Columns.Add("aSellTotOrderQty", typeof(string));
+                dt.Columns.Add("aSellValidOrderCnt", typeof(string));
+                dt.Columns.Add("aNoMDEntries", typeof(string));
+
+                dt.Columns.Add("aBuyPrice1", typeof(string));
+                dt.Columns.Add("aBuyQuantity1", typeof(string));
+                dt.Columns.Add("aBuyPrice1_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice1_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice1_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice2", typeof(string));
+                dt.Columns.Add("aBuyQuantity2", typeof(string));
+                dt.Columns.Add("aBuyPrice2_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice2_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice2_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice3", typeof(string));
+                dt.Columns.Add("aBuyQuantity3", typeof(string));
+                dt.Columns.Add("aBuyPrice3_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice3_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice3_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice4", typeof(string));
+                dt.Columns.Add("aBuyQuantity4", typeof(string));
+                dt.Columns.Add("aBuyPrice4_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice4_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice4_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice5", typeof(string));
+                dt.Columns.Add("aBuyQuantity5", typeof(string));
+                dt.Columns.Add("aBuyPrice5_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice5_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice5_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice6", typeof(string));
+                dt.Columns.Add("aBuyQuantity6", typeof(string));
+                dt.Columns.Add("aBuyPrice6_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice6_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice6_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice7", typeof(string));
+                dt.Columns.Add("aBuyQuantity7", typeof(string));
+                dt.Columns.Add("aBuyPrice7_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice7_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice7_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice8", typeof(string));
+                dt.Columns.Add("aBuyQuantity8", typeof(string));
+                dt.Columns.Add("aBuyPrice8_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice8_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice8_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice9", typeof(string));
+                dt.Columns.Add("aBuyQuantity9", typeof(string));
+                dt.Columns.Add("aBuyPrice9_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice9_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice9_MDEMMS", typeof(string));
+                dt.Columns.Add("aBuyPrice10", typeof(string));
+                dt.Columns.Add("aBuyQuantity10", typeof(string));
+                dt.Columns.Add("aBuyPrice10_NOO", typeof(string));
+                dt.Columns.Add("aBuyPrice10_MDEY", typeof(string));
+                dt.Columns.Add("aBuyPrice10_MDEMMS", typeof(string));
+
+
+                dt.Columns.Add("aSellPrice1", typeof(string));
+                dt.Columns.Add("aSellQuantity1", typeof(string));
+                dt.Columns.Add("aSellPrice1_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice1_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice1_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice2", typeof(string));
+                dt.Columns.Add("aSellQuantity2", typeof(string));
+                dt.Columns.Add("aSellPrice2_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice2_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice2_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice3", typeof(string));
+                dt.Columns.Add("aSellQuantity3", typeof(string));
+                dt.Columns.Add("aSellPrice3_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice3_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice3_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice4", typeof(string));
+                dt.Columns.Add("aSellQuantity4", typeof(string));
+                dt.Columns.Add("aSellPrice4_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice4_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice4_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice5", typeof(string));
+                dt.Columns.Add("aSellQuantity5", typeof(string));
+                dt.Columns.Add("aSellPrice5_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice5_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice5_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice6", typeof(string));
+                dt.Columns.Add("aSellQuantity6", typeof(string));
+                dt.Columns.Add("aSellPrice6_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice6_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice6_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice7", typeof(string));
+                dt.Columns.Add("aSellQuantity7", typeof(string));
+                dt.Columns.Add("aSellPrice7_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice7_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice7_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice8", typeof(string));
+                dt.Columns.Add("aSellQuantity8", typeof(string));
+                dt.Columns.Add("aSellPrice8_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice8_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice8_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice9", typeof(string));
+                dt.Columns.Add("aSellQuantity9", typeof(string));
+                dt.Columns.Add("aSellPrice9_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice9_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice9_MDEMMS", typeof(string));
+                dt.Columns.Add("aSellPrice10", typeof(string));
+                dt.Columns.Add("aSellQuantity10", typeof(string));
+                dt.Columns.Add("aSellPrice10_NOO", typeof(string));
+                dt.Columns.Add("aSellPrice10_MDEY", typeof(string));
+                dt.Columns.Add("aSellPrice10_MDEMMS", typeof(string));
+                dt.Columns.Add("aMatchPrice", typeof(string));
+                dt.Columns.Add("aMatchQuantity", typeof(string));
+                dt.Columns.Add("aOpenPrice", typeof(string));
+                dt.Columns.Add("aClosePrice", typeof(string));
+                dt.Columns.Add("aHighestPrice", typeof(string));
+                dt.Columns.Add("aLowestPrice", typeof(string));
+                //dt.Columns.Add("RepeatingDataFix", typeof(string));
+                //dt.Columns.Add("RepeatingDataJson", typeof(string));
+                dt.Columns.Add("aCheckSum", typeof(string));
+                foreach (var item in lst_ePRecovery)
+                {
+                    DataRow row = dt.NewRow();
+                    row["aBeginString"] = item.BeginString;
+                    row["aBodyLength"] = item.BodyLength;
+                    row["aMsgType"] = item.MsgType;
+                    row["aSenderCompID"] = item.SenderCompID;
+                    row["aTargetCompID"] = item.TargetCompID;
+                    row["aMsgSeqNum"] = item.MsgSeqNum;
+                    // Parse chuỗi "20250404 09:38:55.584" thành DateTime
+                    if (DateTime.TryParseExact(item.SendingTime, "yyyyMMdd HH:mm:ss.fff",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None,
+                        out DateTime sendingTime))
+                    {
+                        row["aSendingTime"] = sendingTime;
+                    }
+                    else
+                    {
+                        // Nếu lỗi format, để NULL
+                        row["aSendingTime"] = DBNull.Value;
+                    }
+                    row["aMarketID"] = item.MarketID;
+                    row["aBoardID"] = item.BoardID;
+                    row["aTradingSessionID"] = item.TradingSessionID;
+                    row["aSymbol"] = item.Symbol;
+
+                    row["aOpnPx"] = item.OpnPx;
+                    row["aTrdSessnHighPx"] = item.TrdSessnHighPx;
+                    row["aTrdSessnLowPx"] = item.TrdSessnLowPx;
+                    row["aSymbolCloseInfoPx"] = item.SymbolCloseInfoPx;
+                    //row["aTradeDate"] = item.TradeDate;
+                    //row["aTransactTime"] = item.TransactTime;
 
                     row["aTotalVolumeTraded"] = item.TotalVolumeTraded != -9999999 ? (object)item.TotalVolumeTraded : DBNull.Value;
                     row["aGrossTradeAmt"] = item.GrossTradeAmt != -9999999 ? (object)item.GrossTradeAmt : DBNull.Value;

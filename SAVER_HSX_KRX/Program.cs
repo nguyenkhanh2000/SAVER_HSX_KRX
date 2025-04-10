@@ -114,7 +114,7 @@ namespace SAVER_HSX_KRX
                 CRedisNewApp _redis_NewApps = new CRedisNewApp(_app, _redisConfig.Endpoints_NewApp, _redisConfig.RedisDB_NewApps);
                 _monitor = new CMonitor(_redis);
                 _repositionry = new CMDDSRepository(_app);
-                _handler = new CMDDSHandler(_app, _repositionry, _redisConfig, _redis, _redis_NewApps, _monitor);
+                _handler = new CMDDSHandler(_app, _repositionry, _redisConfig, _redis, _redis_NewApps, _monitor, _priceConfig);
 
                 _saverConfig = new ESaverConfig();
                 _app.Configuration.GetSection(ESaverConfig.__SECTION_SAVER_CONFIG).Bind(_saverConfig);
